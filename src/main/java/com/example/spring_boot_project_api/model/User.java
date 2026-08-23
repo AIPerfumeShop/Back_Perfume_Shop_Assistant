@@ -2,7 +2,7 @@ package com.example.spring_boot_project_api.model;
 
 import java.time.LocalDateTime;
 
-import javax.management.relation.Role;
+import com.example.spring_boot_project_api.enums.Role;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
