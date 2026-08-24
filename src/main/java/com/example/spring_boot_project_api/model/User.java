@@ -13,63 +13,70 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
-
 @Entity
 @Data
-@jakarta.persistence.Table(name = "tb_users")
+@Table(name = "tb_users")
 public class User {
-    //Id
+    //id
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    //Name
-    @Column(name = "fullname",nullable = false,length = 100)
+    //name
+    @Column(name = "fullname", nullable = false, length = 100)
+    @NotBlank(message = "Full name is required")
+    @Size(max = 100, message = "Full name must be under 100 characters")
     private String name;
-    
-    //Email
+    //email
     @Column(name = "email", nullable = false, unique = true, length = 150)
     @NotBlank(message = "Email is required")
     @Email(message = "Email must be valid")
     @Size(max = 150, message = "Email must be under 150 characters")
     private String email;
-
-    //Password
+    //password
     @Column(name = "password", nullable = false, length = 255)
     @NotBlank(message = "Password is required")
-    @Size(min = 8, max = 255,message = "Password must be between 8 and 255 characters")
+    @Size(min = 8, max = 255, message = "Password must be between 8 and 255 characters")
     private String password;
 
-    //Phone
+    //phone
     @Column(name = "phone", length = 30)
     private String phone;
 
-    //Address
-    @Column(name = "address",columnDefinition = "TEXT")
+    //address
+    @Column(name = "address", columnDefinition = "TEXT")
     private String address;
 
+    //role
     @Enumerated(EnumType.STRING)
-    @Column(name = "role",nullable = false)
+    @Column(name = "role", nullable = false)
     private Role role;
 
+    //timestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
-    //Create_at
-    private LocalDateTime createAt;
-    private LocalDateTime updateAt;
-    
-    //Timestamp
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    //before insert
     @PrePersist
-    protected void onCreate(){
+    protected void onCreate() {
+
         LocalDateTime now = LocalDateTime.now();
-        createAt=now;
-        updateAt=now;
+
+        createdAt = now;
+        updatedAt = now;
     }
+
+    //before update
     @PreUpdate
-    protected void onUpdate(){
-        updateAt = LocalDateTime.now();
+    protected void onUpdate() {
+
+        updatedAt = LocalDateTime.now();
     }
 }
