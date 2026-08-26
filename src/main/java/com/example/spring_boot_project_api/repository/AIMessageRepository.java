@@ -7,5 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.example.spring_boot_project_api.model.AIMessage;
 
 public interface AIMessageRepository extends JpaRepository<AIMessage,Long>{
-    List<AIMessage> findByConversationIdOrderByCreatedAtAsc(Long conversation_id);
+    List<AIMessage> findByConversationIdOrderByCreatedAtAsc(Long conversationId);
 }

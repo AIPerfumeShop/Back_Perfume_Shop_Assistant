@@ -9,10 +9,10 @@ import lombok.Data;
 @Data
 public class ProductFilterRequest {
     private String search;
-    private Long category_id;
+    private Long categoryId;
     private String brand;
     private Gender gender;
-    private String fragrance_family;
+    private String fragranceFamily;
     private BigDecimal maxPrice;
     private BigDecimal minPrice;
     private Integer minRate;

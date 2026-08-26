@@ -12,12 +12,12 @@ public class ProductResponse {
     private String name;
     private String brand;
     private String description;
-    private Long category_id;
-    private String category_name;
+    private Long categoryId;
+    private String categoryName;
     private List<ProductVariantResponse> variant;
     private Gender gender;
-    private String fragrance_family;
-    private String frag_notes;
+    private String fragranceFamily;
+    private String fragNotes;
     private String intensity;
     private List<String> images;
     private Double averageRate;
