@@ -1,10 +1,16 @@
 package com.example.spring_boot_project_api.service.impl;
 
+import java.util.List;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
+import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
+import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
 import com.example.spring_boot_project_api.enums.MessageSender;
 import com.example.spring_boot_project_api.mapper.AIMapper;
 import com.example.spring_boot_project_api.model.AIConversation;
@@ -110,6 +116,42 @@ public class AIServiceImpl implements AIService {
         response.setUpdatedAt(aiMessage.getUpdatedAt());
 
         return response;
+    }
+    //Get User conversation
+    @Override
+    @Transactional(readOnly = true)
+    public List<AIConversationResponse> getUserConversations(Long userId){
+        //check that user exists
+        userRepository.findById(userId).orElseThrow(()->new RuntimeException("User not found"));
+
+        //Get concersation belonging to user
+        List<AIConversation> conversations = aiConversationRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+
+        //Convert Entity -> Response DTO
+        return conversations.stream()
+        .map(aiMapper::toConversationResponse)
+        .collect(Collectors.toList());
+    }
+
+    //Get conversation messages
+    @Override
+    @Transactional(readOnly = true)
+    public List<AIMessageResponse> getConversationMessages(Long userId,Long conversationId){
+        //find conversation
+        AIConversation conversation = aiConversationRepository
+                                    .findById(conversationId)
+                                    .orElseThrow(()-> new RuntimeException("Conversation not found"));
+        //Check Conversation Owner
+        if(!conversation.getUser().getId().equals(userId)){
+            throw new RuntimeException("You do not have access to this conversation");
+        }
+        //Get messages ordered from oldest -> newest
+        List<AIMessage> messages = aiMessageRepository
+                                    .findByConversationIdOrderByCreatedAtAsc(conversationId);
+        //Convert Entity -> Response DTO
+        return messages.stream()
+                        .map(aiMapper::toMessageResponse)
+                        .collect(Collectors.toList());
     }
 
     // Generate conversation title
