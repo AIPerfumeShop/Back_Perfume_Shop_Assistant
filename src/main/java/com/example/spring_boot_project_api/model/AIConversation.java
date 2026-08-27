@@ -29,6 +29,9 @@ public class AIConversation {
     @JoinColumn(name = "user_id",nullable = false)
     private User user;
 
+    @Column(name = "user_name", length = 100)
+    private String userName;
+    
     @Column(length=200)
     private String title;
 
