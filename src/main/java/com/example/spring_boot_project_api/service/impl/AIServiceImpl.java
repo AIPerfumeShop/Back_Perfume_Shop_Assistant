@@ -10,6 +10,8 @@ import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
 import com.example.spring_boot_project_api.enums.MessageSender;
+import com.example.spring_boot_project_api.exception.ForbiddenException;
+import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.AIMapper;
 import com.example.spring_boot_project_api.model.AIConversation;
 import com.example.spring_boot_project_api.model.AIMessage;
@@ -28,7 +30,7 @@ public class AIServiceImpl implements AIService {
     private final UserRepository userRepository;
     private final AIMapper aiMapper;
     private final OpenRouterService openRouterService;
-
+    private static final int MAX_HISTORY_SIZE = 30;
     public AIServiceImpl(
             AIConversationRepository aiConversationRepository,
             AIMessageRepository aiMessageRepository,
@@ -54,7 +56,7 @@ public class AIServiceImpl implements AIService {
         // 1. Find user
         User user = userRepository.findById(userId)
                 .orElseThrow(() ->
-                        new RuntimeException("User not found"));
+                        new ResourceNotFoundException("User not found"));
 
         // 2. Find existing conversation or create new conversation
         AIConversation conversation;
@@ -63,30 +65,25 @@ public class AIServiceImpl implements AIService {
 
             // Create new conversation
             conversation = new AIConversation();
-
             conversation.setUser(user);
             conversation.setUserName(user.getName());
-
             // Generate title from first message
             conversation.setTitle(
                     generateConversationTitle(request.getMessage())
             );
-
             conversation = aiConversationRepository.save(conversation);
-
         } else {
 
             // Find existing conversation
             conversation = aiConversationRepository
                     .findById(request.getConversationId())
                     .orElseThrow(() ->
-                            new RuntimeException("Conversation not found"));
+                            new ResourceNotFoundException("Conversation not found"));
 
             // Check ownership
-            if (conversation.getUser() == null
-                    || !conversation.getUser().getId().equals(userId)) {
+            if (!conversation.getUser().getId().equals(userId)) {
 
-                throw new RuntimeException(
+                throw new ForbiddenException(
                         "You do not have access to this conversation");
             }
         }
@@ -103,6 +100,12 @@ public class AIServiceImpl implements AIService {
                         .findByConversationIdOrderByCreatedAtAsc(
                                 conversation.getId()
                         );
+        if (history.size() > MAX_HISTORY_SIZE) {
+        history = history.subList(
+                history.size() - MAX_HISTORY_SIZE,
+                history.size()
+        );
+        }
 
         // 5. Send conversation history to OpenRouter
         String aiText =
@@ -117,6 +120,10 @@ public class AIServiceImpl implements AIService {
                 );
 
         aiMessage = aiMessageRepository.save(aiMessage);
+
+        // Update conversation activity time
+        conversation.touch();
+        aiConversationRepository.save(conversation);
 
         // 7. Build response
         AIChatResponse response = new AIChatResponse();
@@ -141,7 +148,7 @@ public class AIServiceImpl implements AIService {
         // Check that user exists
         userRepository.findById(userId)
                 .orElseThrow(() ->
-                        new RuntimeException("User not found"));
+                        new ResourceNotFoundException("User not found"));
 
         // Get user's conversations
         List<AIConversation> conversations =
@@ -169,14 +176,13 @@ public class AIServiceImpl implements AIService {
                 aiConversationRepository
                         .findById(conversationId)
                         .orElseThrow(() ->
-                                new RuntimeException(
+                                new ResourceNotFoundException(
                                         "Conversation not found"));
 
         // 2. Check ownership
-        if (conversation.getUser() == null
-                || !conversation.getUser().getId().equals(userId)) {
+        if (!conversation.getUser().getId().equals(userId)) {
 
-            throw new RuntimeException(
+            throw new ForbiddenException(
                     "You do not have access to this conversation");
         }
 
@@ -212,4 +218,34 @@ public class AIServiceImpl implements AIService {
 
         return title;
     }
+
+        @Override
+        @Transactional
+        public AIConversationResponse updateConversation(Long userId, Long conversationId, String title) {
+        AIConversation conversation = aiConversationRepository
+                .findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation not found"));
+
+        if (!conversation.getUser().getId().equals(userId)) {
+                throw new ForbiddenException("You do not have access to this conversation");
+        }
+
+        conversation.setTitle(title);
+        conversation = aiConversationRepository.save(conversation);
+        return aiMapper.toConversationResponse(conversation);
+        }
+
+        @Override
+        @Transactional
+        public void deleteConversation(Long userId, Long conversationId) {
+        AIConversation conversation = aiConversationRepository
+                .findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation not found"));
+
+        if (!conversation.getUser().getId().equals(userId)) {
+                throw new ForbiddenException("You do not have access to this conversation");
+        }
+
+        aiConversationRepository.delete(conversation);
+        }
 }

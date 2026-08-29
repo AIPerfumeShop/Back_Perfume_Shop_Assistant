@@ -15,4 +15,7 @@ public interface AIService {
 
     //Get all messages belonging to a conversation
     List<AIMessageResponse> getConversationMessages(Long userId,Long conversationId);
+    AIConversationResponse updateConversation(Long userId, Long conversationId, String title);
+
+    void deleteConversation(Long userId, Long conversationId);
 }
