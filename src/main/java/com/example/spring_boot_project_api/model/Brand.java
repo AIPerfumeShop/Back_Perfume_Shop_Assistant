@@ -7,8 +7,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.validation.constraints.NotBlank;
@@ -17,48 +15,42 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@jakarta.persistence.Table(name = "tb_products")
+@jakarta.persistence.Table(name = "tb_brands")
 @Getter
 @Setter
-public class Product {
+public class Brand {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "category_id",nullable = false)
-    private Category category;
-
-    @ManyToOne
-    @JoinColumn(name = "brand_id",nullable = false)
-    private Brand brand;
-
-    @Column(name = "name", length = 100)
-    @NotBlank(message = "Product name is required")
-    @Size(max = 100,message = "Product name must be under 100 characters")
+    @Column(name = "name",nullable = false, length = 100,unique = true)
+    @NotBlank(message = "Brand name is required")
+    @Size(max = 100,message = "Brand's name must be under 100 Characters")
     private String name;
 
     @Column(name = "description",columnDefinition="TEXT")
     private String description;
 
+    @Column(name = "logo_url",length = 500)
+    private String logoUrl;
+
     @Column(name = "is_active",nullable = false)
-    private Boolean isActive=true;
+    private Boolean isActive = true;
 
     @Column(name = "created_at",nullable = false,updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at",nullable = false)
     private LocalDateTime updatedAt;
-
     @PrePersist
     protected void onCreate(){
         LocalDateTime now = LocalDateTime.now();
         createdAt = now;
         updatedAt = now;
     }
-
     @PreUpdate
     protected void onUpdate(){
         updatedAt = LocalDateTime.now();
     }
+    
 }
