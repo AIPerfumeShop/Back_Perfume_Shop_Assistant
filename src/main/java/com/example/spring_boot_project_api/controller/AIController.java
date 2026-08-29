@@ -36,12 +36,14 @@ public class AIController {
     //get all conversations of a user
     @GetMapping("/conversations")
     public ResponseEntity<List<AIConversationResponse>> getUserConversations(@RequestParam Long userId){
-        return ResponseEntity.ok(aiService.getUserConversations(userId));
+        List<AIConversationResponse> conversations = aiService.getUserConversations(userId);
+        return ResponseEntity.ok(conversations);
     }
 
     //Get Messages of a conversation
     @GetMapping("/conversations/{conversationId}/messages")
     public ResponseEntity<List<AIMessageResponse>> getConversationMessages(@RequestParam Long userId, @PathVariable Long conversationId){
-        return ResponseEntity.ok(aiService.getConversationMessages(userId, conversationId));
+        List<AIMessageResponse> messages = aiService.getConversationMessages(userId, conversationId);
+        return ResponseEntity.ok(messages);
     }
 }

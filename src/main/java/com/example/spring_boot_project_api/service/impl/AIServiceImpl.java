@@ -1,8 +1,6 @@
 package com.example.spring_boot_project_api.service.impl;
 
 import java.util.List;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,27 +43,31 @@ public class AIServiceImpl implements AIService {
         this.openRouterService = openRouterService;
     }
 
+    // =========================================================
+    // CHAT
+    // =========================================================
+
     @Override
     @Transactional
     public AIChatResponse chat(Long userId, AIChatRequest request) {
 
-        // 1. Find the current user
+        // 1. Find user
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("User not found"));
 
-        // 2. Find existing conversation or create a new one
+        // 2. Find existing conversation or create new conversation
         AIConversation conversation;
 
         if (request.getConversationId() == null) {
 
+            // Create new conversation
             conversation = new AIConversation();
 
             conversation.setUser(user);
-
-            // Save user's name
             conversation.setUserName(user.getName());
 
-            // Generate conversation title from first message
+            // Generate title from first message
             conversation.setTitle(
                     generateConversationTitle(request.getMessage())
             );
@@ -74,13 +76,16 @@ public class AIServiceImpl implements AIService {
 
         } else {
 
+            // Find existing conversation
             conversation = aiConversationRepository
                     .findById(request.getConversationId())
                     .orElseThrow(() ->
                             new RuntimeException("Conversation not found"));
 
-            // Make sure the conversation belongs to the current user
-            if (!conversation.getUser().getId().equals(userId)) {
+            // Check ownership
+            if (conversation.getUser() == null
+                    || !conversation.getUser().getId().equals(userId)) {
+
                 throw new RuntimeException(
                         "You do not have access to this conversation");
             }
@@ -92,21 +97,28 @@ public class AIServiceImpl implements AIService {
 
         aiMessageRepository.save(userMessage);
 
-        // 4. Send user's message to OpenRouter
-        String aiText =
-                openRouterService.generateResponse(request.getMessage());
-        // String aiText = "Test AI response";
+        // 4. Load conversation history
+        List<AIMessage> history =
+                aiMessageRepository
+                        .findByConversationIdOrderByCreatedAtAsc(
+                                conversation.getId()
+                        );
 
-        // 5. Save AI response
+        // 5. Send conversation history to OpenRouter
+        String aiText =
+                openRouterService.generateResponse(history);
+
+        // 6. Save AI response
         AIMessage aiMessage =
                 aiMapper.toMessageEntity(
                         aiText,
                         MessageSender.AI,
-                        conversation);
+                        conversation
+                );
 
         aiMessage = aiMessageRepository.save(aiMessage);
 
-        // 6. Build response
+        // 7. Build response
         AIChatResponse response = new AIChatResponse();
 
         response.setConversationId(conversation.getId());
@@ -117,51 +129,82 @@ public class AIServiceImpl implements AIService {
 
         return response;
     }
-    //Get User conversation
+
+    // =========================================================
+    // GET USER CONVERSATIONS
+    // =========================================================
+
     @Override
     @Transactional(readOnly = true)
-    public List<AIConversationResponse> getUserConversations(Long userId){
-        //check that user exists
-        userRepository.findById(userId).orElseThrow(()->new RuntimeException("User not found"));
+    public List<AIConversationResponse> getUserConversations(Long userId) {
 
-        //Get concersation belonging to user
-        List<AIConversation> conversations = aiConversationRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+        // Check that user exists
+        userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new RuntimeException("User not found"));
 
-        //Convert Entity -> Response DTO
+        // Get user's conversations
+        List<AIConversation> conversations =
+                aiConversationRepository
+                        .findByUserIdOrderByUpdatedAtDesc(userId);
+
+        // Convert Entity -> Response DTO
         return conversations.stream()
-        .map(aiMapper::toConversationResponse)
-        .collect(Collectors.toList());
+                .map(aiMapper::toConversationResponse)
+                .toList();
     }
 
-    //Get conversation messages
+    // =========================================================
+    // GET CONVERSATION MESSAGES / HISTORY
+    // =========================================================
+
     @Override
     @Transactional(readOnly = true)
-    public List<AIMessageResponse> getConversationMessages(Long userId,Long conversationId){
-        //find conversation
-        AIConversation conversation = aiConversationRepository
-                                    .findById(conversationId)
-                                    .orElseThrow(()-> new RuntimeException("Conversation not found"));
-        //Check Conversation Owner
-        if(!conversation.getUser().getId().equals(userId)){
-            throw new RuntimeException("You do not have access to this conversation");
+    public List<AIMessageResponse> getConversationMessages(
+            Long userId,
+            Long conversationId) {
+
+        // 1. Find conversation
+        AIConversation conversation =
+                aiConversationRepository
+                        .findById(conversationId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Conversation not found"));
+
+        // 2. Check ownership
+        if (conversation.getUser() == null
+                || !conversation.getUser().getId().equals(userId)) {
+
+            throw new RuntimeException(
+                    "You do not have access to this conversation");
         }
-        //Get messages ordered from oldest -> newest
-        List<AIMessage> messages = aiMessageRepository
-                                    .findByConversationIdOrderByCreatedAtAsc(conversationId);
-        //Convert Entity -> Response DTO
+
+        // 3. Get messages from oldest -> newest
+        List<AIMessage> messages =
+                aiMessageRepository
+                        .findByConversationIdOrderByCreatedAtAsc(
+                                conversationId
+                        );
+
+        // 4. Convert Entity -> Response DTO
         return messages.stream()
-                        .map(aiMapper::toMessageResponse)
-                        .collect(Collectors.toList());
+                .map(aiMapper::toMessageResponse)
+                .toList();
     }
 
-    // Generate conversation title
+    // =========================================================
+    // GENERATE CONVERSATION TITLE
+    // =========================================================
+
     private String generateConversationTitle(String message) {
 
         if (message == null || message.trim().isEmpty()) {
             return "New Conversation";
         }
 
-        String title = message.trim().replaceAll("\\s+", " ");
+        String title = message.trim()
+                .replaceAll("\\s+", " ");
 
         if (title.length() > 50) {
             title = title.substring(0, 50).trim() + "...";
