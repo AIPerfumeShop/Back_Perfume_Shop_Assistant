@@ -2,6 +2,7 @@ package com.example.spring_boot_project_api.controller;
 
 import java.util.List;
 
+<<<<<<< HEAD
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -70,4 +71,6 @@ public class CategoryController {
 
         return ResponseEntity.noContent().build();
     }
+=======
+>>>>>>> dev
 }

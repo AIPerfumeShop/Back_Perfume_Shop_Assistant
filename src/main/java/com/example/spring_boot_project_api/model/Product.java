@@ -33,9 +33,9 @@ public class Product {
     @JoinColumn(name = "brand_id",nullable = false)
     private Brand brand;
 
-    @Column(name = "name", length = 100)
+    @Column(name = "name", length = 200)
     @NotBlank(message = "Product name is required")
-    @Size(max = 100,message = "Product name must be under 100 characters")
+    @Size(max = 200,message = "Product name must be under 200 characters")
     private String name;
 
     @Column(name = "description",columnDefinition="TEXT")
