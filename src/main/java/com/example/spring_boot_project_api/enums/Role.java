@@ -1,6 +1,6 @@
 package com.example.spring_boot_project_api.enums;
 
 public enum Role {
-    customer,
-    admin
+    CUSTOMER,
+    ADMIN
 }

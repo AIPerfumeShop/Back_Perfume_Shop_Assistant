@@ -27,7 +27,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     //name
-    @Column(name = "fullname", nullable = false, length = 100)
+    @Column(name = "name", nullable = false, length = 100)
     @NotBlank(message = "Full name is required")
     @Size(max = 100, message = "Full name must be under 100 characters")
     private String name;
@@ -47,14 +47,14 @@ public class User {
     @Column(name = "phone", length = 30)
     private String phone;
 
-    //address
-    @Column(name = "address", columnDefinition = "TEXT")
-    private String address;
-
     //role
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)
     private Role role;
+
+    //is active
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
 
     //timestamp
     @Column(name = "created_at", nullable = false, updatable = false)
