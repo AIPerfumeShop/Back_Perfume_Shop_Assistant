@@ -37,6 +37,15 @@ public class BrandMapper {
         return response;
     }
 
+    //Brand + product count -> BrandResponse
+    public BrandResponse toResponse(Brand brand, Long productsCount){
+        BrandResponse response = toResponse(brand);
+        if (response != null) {
+            response.setProductsCount(productsCount);
+        }
+        return response;
+    }
+
     //Update existing Brand from BrandRequest
     public void updateEntity(BrandRequest request, Brand brand){
         if (request == null || brand == null) {

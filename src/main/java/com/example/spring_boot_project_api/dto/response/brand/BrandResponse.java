@@ -13,6 +13,7 @@ public class BrandResponse {
     private String description;
     private String logoUrl;
     private Boolean isActive;
+    private Long productsCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
