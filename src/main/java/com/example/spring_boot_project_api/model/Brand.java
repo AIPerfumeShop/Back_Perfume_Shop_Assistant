@@ -24,29 +24,30 @@ public class Brand {
     @Column(name = "name", nullable = false, length = 100, unique = true)
     private String name;
 
-    @Column(name = "description",columnDefinition="TEXT")
+    @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "logo_url",length = 500)
+    @Column(name = "logo_url", length = 500)
     private String logoUrl;
 
-    @Column(name = "is_active",nullable = false)
+    @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
-    @Column(name = "created_at",nullable = false,updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at",nullable = false)
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
     @PrePersist
-    protected void onCreate(){
+    protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
         createdAt = now;
         updatedAt = now;
     }
+
     @PreUpdate
-    protected void onUpdate(){
+    protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-    
 }

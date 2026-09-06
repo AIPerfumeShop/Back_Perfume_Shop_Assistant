@@ -121,12 +121,11 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.BAD_REQUEST)
                 .body(error);
     }
-    //Error Respnse
+    //Error Response
     public record ErrorResponse(
         int status,
         String message,
         LocalDateTime timestamp) {
     }
 
-    
 }
