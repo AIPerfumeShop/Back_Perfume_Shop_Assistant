@@ -67,8 +67,9 @@ public class R2StorageServiceImpl implements UploadStorageService {
         String folderPath = validateFolder(folder);
         String contentType = file.getContentType();
         String extension = getExtension(file.getOriginalFilename(), contentType);
+        String baseName = getBaseName(file.getOriginalFilename());
         String key = folderPath + "/" + UUID.randomUUID() + "-"
-                + sanitize(file.getOriginalFilename()) + extension;
+                + baseName + extension;
 
         try (InputStream inputStream = file.getInputStream()) {
             s3Client.putObject(
@@ -133,7 +134,15 @@ public class R2StorageServiceImpl implements UploadStorageService {
         return "";
     }
 
-    private String sanitize(String filename) {
-        return filename == null ? "image" : filename;
+    private String getBaseName(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return "image";
+        }
+        String baseName = filename;
+        String extension = StringUtils.getFilenameExtension(filename);
+        if (extension != null) {
+            baseName = baseName.substring(0, baseName.length() - extension.length() - 1);
+        }
+        return baseName;
     }
 }
