@@ -5,6 +5,9 @@ import com.example.spring_boot_project_api.model.Product;
 import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.Review;
 
+import java.math.BigDecimal;
+
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 
@@ -77,6 +80,17 @@ public class ProductSpecification {
                 query.groupBy(root.get("id"));
                 query.having(cb.greaterThanOrEqualTo(
                         cb.avg(review.get("rating")), filter.getMinRate().doubleValue()));
+            }
+
+            // 9. PRICE SORT — order by lowest variant price
+            if (filter.isPriceSort()) {
+                Expression<BigDecimal> lowestPrice =
+                        cb.min(root.join("variants").get("price"));
+                if ("desc".equalsIgnoreCase(filter.getDirection())) {
+                    query.orderBy(cb.desc(lowestPrice));
+                } else {
+                    query.orderBy(cb.asc(lowestPrice));
+                }
             }
 
             return predicate;

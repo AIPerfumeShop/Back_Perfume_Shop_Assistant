@@ -23,7 +23,8 @@ public class ProductFilterRequest {
         "id",
         "name",
         "createdAt",
-        "updatedAt"
+        "updatedAt",
+        "price"
     );
     private String search;
     private Long categoryId;
@@ -43,6 +44,10 @@ public class ProductFilterRequest {
     public boolean hasSearch(){
         return search != null && !search.trim().isEmpty();
     }
+    public boolean isPriceSort(){
+        String s = sort == null || sort.trim().isEmpty() ? DEFAULT_SORT : sort.trim();
+        return "price".equalsIgnoreCase(s);
+    }
     public PageRequest toPageRequest(){
         int pageNum = page == null || page < 0 ? DEFAULT_PAGE : page;
         int pageSize = size == null || size <= 0 ? DEFAULT_SIZE : size;
@@ -50,6 +55,9 @@ public class ProductFilterRequest {
         String sortField = sort == null || sort.trim().isEmpty() ? DEFAULT_SORT : sort.trim();
         if(!SORTABLE_FIELDS.contains(sortField)){
             sortField = DEFAULT_SORT;
+        }
+        if("price".equalsIgnoreCase(sortField)){
+            return PageRequest.of(pageNum, pageSize);
         }
         Sort.Direction dir = Sort.Direction.ASC;
         if(direction != null){
