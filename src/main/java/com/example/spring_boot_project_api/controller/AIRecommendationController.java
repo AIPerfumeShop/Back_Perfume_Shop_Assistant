@@ -15,6 +15,9 @@ import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationClick
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationResponse;
 import com.example.spring_boot_project_api.service.AIRecommendationService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
 @RestController
@@ -27,6 +30,10 @@ public class AIRecommendationController {
         this.recommendationService = recommendationService;
     }
 
+    @Operation(summary = "Get AI product recommendations")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Recommendations retrieved successfully")
+    })
     @PostMapping
     public ResponseEntity<List<AIRecommendationResponse>> recommend(
             @RequestParam Long userId,
@@ -34,6 +41,10 @@ public class AIRecommendationController {
         return ResponseEntity.ok(recommendationService.recommend(userId, request));
     }
 
+    @Operation(summary = "Track a click on an AI recommendation")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Click tracked successfully")
+    })
     @PostMapping("/click")
     public ResponseEntity<AIRecommendationClickResponse> trackClick(
             @RequestParam Long userId,

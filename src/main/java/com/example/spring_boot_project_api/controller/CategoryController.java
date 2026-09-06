@@ -19,6 +19,10 @@ import com.example.spring_boot_project_api.dto.request.category.UpdateCategoryRe
 import com.example.spring_boot_project_api.dto.response.category.CategoryResponse;
 import com.example.spring_boot_project_api.service.CategoryService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
 import jakarta.validation.Valid;
 
 @RestController
@@ -30,6 +34,10 @@ public class CategoryController {
         this.categoryService = categoryService;
     }
     //Create Category
+    @Operation(summary = "Create a new category")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "Category created successfully")
+    })
     @PostMapping
     public ResponseEntity<CategoryResponse> createCategory(
         @Valid @RequestBody CreateCategoryRequest request
@@ -40,6 +48,10 @@ public class CategoryController {
             .body(response);
     }
     //Get all categories
+    @Operation(summary = "Get all categories")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Categories retrieved successfully")
+    })
     @GetMapping
     public ResponseEntity<List<CategoryResponse>> getAllCategories() {
         List<CategoryResponse> response = categoryService.getAllCategories();
@@ -47,6 +59,11 @@ public class CategoryController {
     }
 
     //Get Category By Id
+    @Operation(summary = "Get a category by ID")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Category retrieved successfully"),
+        @ApiResponse(responseCode = "404", description = "Category not found")
+    })
     @GetMapping("/{id}")
     public ResponseEntity<CategoryResponse> getCategoryById(
         @PathVariable Long id) {
@@ -55,6 +72,10 @@ public class CategoryController {
             return ResponseEntity.ok(response);
         }
     //Update Category
+    @Operation(summary = "Update a category")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Category updated successfully")
+    })
     @PutMapping("/{id}")
     public ResponseEntity<CategoryResponse> updateCategory(
         @PathVariable Long id,
@@ -64,6 +85,10 @@ public class CategoryController {
             return ResponseEntity.ok(response);
         }
     //Soft Delete Category
+    @Operation(summary = "Deactivate (soft delete) a category")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Category deactivated successfully")
+    })
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deactivateCategory(@PathVariable Long id) {
         categoryService.deactivateCategory(id);

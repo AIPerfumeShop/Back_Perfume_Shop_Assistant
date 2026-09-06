@@ -29,6 +29,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/dashboard/**").permitAll()
                 .requestMatchers("/api/analytics/**").permitAll()
                 .requestMatchers("/api/statistics/**").permitAll()
+                .requestMatchers("/api/orders/**").permitAll()
                 .anyRequest().authenticated()
             );
         return http.build();

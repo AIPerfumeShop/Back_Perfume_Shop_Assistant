@@ -23,6 +23,10 @@ import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.service.OrderService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
 import jakarta.validation.Valid;
 
 @RestController
@@ -36,6 +40,10 @@ public class OrderController {
     }
 
     //Create order
+    @Operation(summary = "Create a new order")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "Order created successfully")
+    })
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
             @Valid @RequestBody CreateOrderRequest request) {
@@ -46,6 +54,10 @@ public class OrderController {
     }
 
     //Checkout (create order + payment)
+    @Operation(summary = "Checkout (create order plus payment)")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "Checkout completed successfully")
+    })
     @PostMapping("/checkout")
     public ResponseEntity<CheckoutResponse> checkout(
             @Valid @RequestBody CheckoutRequest request) {
@@ -56,6 +68,11 @@ public class OrderController {
     }
 
     //Get order by id
+    @Operation(summary = "Get an order by ID")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Order retrieved successfully"),
+        @ApiResponse(responseCode = "404", description = "Order not found")
+    })
     @GetMapping("/{id}")
     public ResponseEntity<OrderResponse> getOrderById(
             @RequestParam Long userId,
@@ -65,6 +82,10 @@ public class OrderController {
     }
 
     //Get all orders of a user
+    @Operation(summary = "Get all orders of a user")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Orders retrieved successfully")
+    })
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<OrderResponse>> getUserOrders(
             @PathVariable Long userId) {
@@ -73,6 +94,10 @@ public class OrderController {
     }
 
     //Get all orders (admin)
+    @Operation(summary = "Get all orders (admin)")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Orders retrieved successfully")
+    })
     @GetMapping
     public ResponseEntity<List<OrderResponse>> getAllOrders() {
         List<OrderResponse> response = orderService.getAllOrders();
@@ -80,6 +105,10 @@ public class OrderController {
     }
 
     //Update order status
+    @Operation(summary = "Update order status")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Order status updated successfully")
+    })
     @PutMapping("/{id}/status")
     public ResponseEntity<OrderResponse> updateOrderStatus(
             @PathVariable Long id,
@@ -90,6 +119,10 @@ public class OrderController {
     }
 
     //Cancel order
+    @Operation(summary = "Cancel an order")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Order cancelled successfully")
+    })
     @DeleteMapping("/{id}")
     public ResponseEntity<OrderResponse> cancelOrder(
             @RequestParam Long userId,

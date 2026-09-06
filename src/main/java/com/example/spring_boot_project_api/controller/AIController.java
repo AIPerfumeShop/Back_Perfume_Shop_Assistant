@@ -32,7 +32,12 @@ public class AIController {
     public AIController(AIService aiService){
         this.aiService = aiService;
     }
+
     //Send message and get AI response
+    @Operation(summary = "Send a message to the AI assistant")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "AI response retrieved successfully")
+    })
     @PostMapping("/chat")
     public ResponseEntity<AIChatResponse> chat(@RequestParam Long userId, @Valid @RequestBody AIChatRequest request){
         AIChatResponse response = aiService.chat(userId, request);
@@ -40,6 +45,10 @@ public class AIController {
     }
 
     //get all conversations of a user
+    @Operation(summary = "Get all conversations of a user")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Conversations retrieved successfully")
+    })
     @GetMapping("/conversations")
     public ResponseEntity<List<AIConversationResponse>> getUserConversations(@RequestParam Long userId){
         List<AIConversationResponse> conversations = aiService.getUserConversations(userId);
@@ -47,11 +56,20 @@ public class AIController {
     }
 
     //Get Messages of a conversation
+    @Operation(summary = "Get all messages of a conversation")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Messages retrieved successfully")
+    })
     @GetMapping("/conversations/{conversationId}/messages")
     public ResponseEntity<List<AIMessageResponse>> getConversationMessages(@RequestParam Long userId, @PathVariable Long conversationId){
         List<AIMessageResponse> messages = aiService.getConversationMessages(userId, conversationId);
         return ResponseEntity.ok(messages);
     }
+
+    @Operation(summary = "Rename a conversation")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Conversation renamed successfully")
+    })
     @PutMapping("/conversations/{conversationId}")
     public ResponseEntity<AIConversationResponse> updateConversation(
             @RequestParam Long userId,
