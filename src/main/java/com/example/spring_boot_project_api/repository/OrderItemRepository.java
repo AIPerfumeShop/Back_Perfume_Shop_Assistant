@@ -84,6 +84,14 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     List<BrandPerformanceStat> findBrandPerformance(@Param("start") LocalDateTime start,
                                                     @Param("end") LocalDateTime end);
 
+    @Query("""
+            select coalesce(sum(oi.quantity), 0)
+            from OrderItem oi
+            where oi.order.createdAt >= :start and oi.order.createdAt < :end
+            """)
+    Long sumQuantityBetween(@Param("start") LocalDateTime start,
+                            @Param("end") LocalDateTime end);
+
     interface BestSellerProjection {
         String getProductName();
         String getBrand();
