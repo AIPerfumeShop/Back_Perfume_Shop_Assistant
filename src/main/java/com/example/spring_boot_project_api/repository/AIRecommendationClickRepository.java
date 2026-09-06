@@ -21,6 +21,11 @@ public interface AIRecommendationClickRepository extends JpaRepository<AIRecomme
         Long getCount();
     }
 
+    interface ClickTrendStat {
+        java.sql.Date getDay();
+        Long getCount();
+    }
+
     @Query("""
             SELECT rc.recommendation.product.id AS productId,
                    rc.recommendation.product.name AS productName,
@@ -45,6 +50,18 @@ public interface AIRecommendationClickRepository extends JpaRepository<AIRecomme
 
     @Query("SELECT COUNT(DISTINCT rc.user.id) FROM AIRecommendationClick rc WHERE rc.clickedAt BETWEEN :start AND :end")
     long countDistinctUsersBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
+    @Query("""
+            select function('date', rc.clickedAt) as day,
+                   count(rc) as count
+            from AIRecommendationClick rc
+            where rc.clickedAt between :start and :end
+            group by function('date', rc.clickedAt)
+            order by function('date', rc.clickedAt) asc
+            """)
+    List<ClickTrendStat> findClickTrend(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 }

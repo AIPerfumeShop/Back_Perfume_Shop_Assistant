@@ -21,6 +21,11 @@ public interface AIRecommendationRepository extends JpaRepository<AIRecommendati
         Long getCount();
     }
 
+    interface RecommendationTrendStat {
+        java.sql.Date getDay();
+        Long getCount();
+    }
+
     List<AIRecommendation> findByConversationId(Long conversationId);
 
     @Query("""
@@ -50,6 +55,18 @@ public interface AIRecommendationRepository extends JpaRepository<AIRecommendati
 
     @Query("SELECT COUNT(DISTINCT r.product.id) FROM AIRecommendation r WHERE r.createdAt BETWEEN :start AND :end")
     long countDistinctProductsBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
+    @Query("""
+            select function('date', r.createdAt) as day,
+                   count(r) as count
+            from AIRecommendation r
+            where r.createdAt between :start and :end
+            group by function('date', r.createdAt)
+            order by function('date', r.createdAt) asc
+            """)
+    List<RecommendationTrendStat> findRecommendationTrend(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 }
