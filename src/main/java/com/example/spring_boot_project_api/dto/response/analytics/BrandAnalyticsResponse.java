@@ -8,8 +8,8 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ProductAnalyticsResponse {
-    private Long totalProductsSold;
-    private BigDecimal totalProductRevenue;
-    private List<ProductPerformanceResponse> topProducts;
+public class BrandAnalyticsResponse {
+    private Long totalQuantitySold;
+    private BigDecimal totalRevenue;
+    private List<BrandPerformanceResponse> brands;
 }
