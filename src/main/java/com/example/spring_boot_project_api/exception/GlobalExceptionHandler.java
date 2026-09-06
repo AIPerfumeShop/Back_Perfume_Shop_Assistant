@@ -103,6 +103,19 @@ public class GlobalExceptionHandler {
                 .body(error);
     }
 
+    //Upload Storage 400
+    @ExceptionHandler(UploadStorageException.class)
+    public ResponseEntity<ErrorResponse> handleUploadStorage(UploadStorageException ex){
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_REQUEST.value(),
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(error);
+    }
+
     //Bean Validation 400
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex){
