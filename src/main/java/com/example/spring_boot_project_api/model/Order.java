@@ -7,6 +7,8 @@ import java.util.List;
 
 import com.example.spring_boot_project_api.enums.OrderStatus;
 
+import org.hibernate.annotations.BatchSize;
+
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -58,6 +60,7 @@ public class Order {
     private String cancelReason;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<OrderItem> items = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
