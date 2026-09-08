@@ -1,12 +1,16 @@
 package com.example.spring_boot_project_api.service.impl;
 
 import com.example.spring_boot_project_api.dto.request.order.CheckoutRequest;
+import com.example.spring_boot_project_api.dto.request.order.OrderFilterRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
+import com.example.spring_boot_project_api.dto.response.order.AdminOrderSummaryResponse;
 import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.service.PaymentService;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +30,7 @@ import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
+import com.example.spring_boot_project_api.repository.specification.OrderSpecification;
 import com.example.spring_boot_project_api.service.OrderService;
 
 @Service
@@ -111,6 +116,37 @@ public class OrderServiceImpl implements OrderService {
         );
     }
 
+    //Get all orders with filtering and pagination (admin)
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<AdminOrderSummaryResponse> getAllOrdersFiltered(OrderFilterRequest filter) {
+        if (filter == null) {
+            filter = new OrderFilterRequest();
+        }
+
+        Page<Order> orders = orderRepository.findAll(
+                OrderSpecification.fromFilter(filter),
+                filter.toPageRequest());
+
+        List<AdminOrderSummaryResponse> content = orders.getContent().stream()
+                .map(orderMapper::toAdminSummaryResponse)
+                .toList();
+
+        return new PagedResponse<>(
+                content,
+                orders.getTotalElements(),
+                orders.getTotalPages(),
+                orders.getNumber(),
+                orders.getSize());
+    }
+
+    //Get order by id (admin)
+    @Override
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderByIdAdmin(Long orderId) {
+        return orderMapper.toResponse(findOrder(orderId));
+    }
+
     //Update order status
     @Override
     public OrderResponse updateOrderStatus(Long orderId, OrderStatus status) {
@@ -139,6 +175,23 @@ public class OrderServiceImpl implements OrderService {
         Order order = findOrder(orderId);
 
         checkOwnership(order, userId);
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw new InvalidOrderException("Order is already cancelled");
+        }
+
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setCancelReason(reason);
+
+        restoreStock(order);
+
+        return orderMapper.toResponse(orderRepository.save(order));
+    }
+
+    //Cancel an order (admin)
+    @Override
+    public OrderResponse cancelOrderAdmin(Long orderId, String reason) {
+        Order order = findOrder(orderId);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new InvalidOrderException("Order is already cancelled");

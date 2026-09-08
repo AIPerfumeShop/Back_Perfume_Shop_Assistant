@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import com.example.spring_boot_project_api.dto.response.order.AdminOrderSummaryResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderItemResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.model.Order;
@@ -65,6 +66,34 @@ public class OrderMapper {
     public List<OrderResponse> toResponseList(List<Order> orders){
         return orders.stream()
                 .map(this::toResponse)
+                .toList();
+    }
+
+    //Order -> AdminOrderSummaryResponse
+    public AdminOrderSummaryResponse toAdminSummaryResponse(Order order){
+        if (order == null) {
+            return null;
+        }
+        AdminOrderSummaryResponse response = new AdminOrderSummaryResponse();
+
+        response.setId(order.getId());
+        if (order.getUser() != null) {
+            response.setUserId(order.getUser().getId());
+            response.setUserName(order.getUser().getName());
+            response.setUserEmail(order.getUser().getEmail());
+        }
+        response.setTotalAmount(order.getTotalAmount());
+        response.setStatus(order.getStatus());
+        response.setItemCount(order.getItems() == null ? 0 : order.getItems().size());
+        response.setCreatedAt(order.getCreatedAt());
+        response.setUpdatedAt(order.getUpdatedAt());
+        return response;
+    }
+
+    //List<Order> -> List<AdminOrderSummaryResponse>
+    public List<AdminOrderSummaryResponse> toAdminSummaryResponseList(List<Order> orders){
+        return orders.stream()
+                .map(this::toAdminSummaryResponse)
                 .toList();
     }
 }
