@@ -2,6 +2,7 @@ package com.example.spring_boot_project_api.repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.domain.Pageable;
@@ -18,7 +19,25 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     List<Order> findByUserIdOrderByCreatedAtDesc(Long userId);
 
+    List<Order> findTop5ByUserIdOrderByCreatedAtDesc(Long userId);
+
     List<Order> findTop10ByOrderByCreatedAtDesc();
+
+    @Query("""
+            select o.user.id as userId,
+                   count(o) as orderCount,
+                   coalesce(sum(o.totalAmount), 0) as totalSpent
+            from Order o
+            where o.user.id in :userIds
+            group by o.user.id
+            """)
+    List<UserOrderStat> countOrdersByUserIds(@Param("userIds") Collection<Long> userIds);
+
+    interface UserOrderStat {
+        Long getUserId();
+        Long getOrderCount();
+        BigDecimal getTotalSpent();
+    }
 
     long countByStatus(OrderStatus status);
 
