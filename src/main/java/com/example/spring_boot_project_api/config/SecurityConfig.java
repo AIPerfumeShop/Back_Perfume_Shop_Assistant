@@ -36,6 +36,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/orders/**").permitAll()
                 .requestMatchers("/api/admin/reviews/**").permitAll()
                 .requestMatchers("/api/payments/**").permitAll()
+                .requestMatchers("/api/cs/**").permitAll()
                 .anyRequest().authenticated()
             );
         return http.build();
