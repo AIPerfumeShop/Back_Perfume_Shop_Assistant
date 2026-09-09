@@ -7,7 +7,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ReviewResponse {
+public class AdminReviewSummaryResponse {
     private Long id;
     private Long userId;
     private String userName;
@@ -17,8 +17,5 @@ public class ReviewResponse {
     private String comment;
     private Boolean approved;
     private Boolean deleted;
-    private String moderationNote;
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private LocalDateTime deletedAt;
 }
