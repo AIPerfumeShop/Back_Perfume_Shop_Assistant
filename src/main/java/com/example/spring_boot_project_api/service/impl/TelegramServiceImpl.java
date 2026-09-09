@@ -47,8 +47,8 @@ public class TelegramServiceImpl implements TelegramService {
 
     @PostConstruct
     public void init() {
-        if (!properties.hasToken()) {
-            log.warn("Telegram bot is not configured (telegram.bot.token missing) - notifications disabled");
+        if (!properties.isEnabled()) {
+            log.warn("Telegram bot disabled (telegram.bot.enabled=false or creds missing) - notifications disabled");
             return;
         }
         bot = new TelegramLongPollingBot(properties.getToken()) {

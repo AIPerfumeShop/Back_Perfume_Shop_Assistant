@@ -12,6 +12,7 @@ public class TelegramBotProperties {
     private String token;
     private String username;
     private String chatId;
+    private boolean enabled = false;
 
     public boolean hasToken() {
         return token != null && !token.isBlank();
@@ -22,6 +23,6 @@ public class TelegramBotProperties {
     }
 
     public boolean isEnabled() {
-        return hasToken() && hasChatId();
+        return enabled && hasToken() && hasChatId();
     }
 }
