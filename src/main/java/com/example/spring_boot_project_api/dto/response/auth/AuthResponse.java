@@ -1,5 +1,6 @@
 package com.example.spring_boot_project_api.dto.response.auth;
 
+import com.example.spring_boot_project_api.dto.response.user.UserResponse;
 import com.example.spring_boot_project_api.enums.Role;
 
 public record AuthResponse(

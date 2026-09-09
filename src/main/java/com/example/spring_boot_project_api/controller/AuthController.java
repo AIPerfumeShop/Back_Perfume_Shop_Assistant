@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.spring_boot_project_api.dto.request.auth.LoginRequest;
 import com.example.spring_boot_project_api.dto.request.auth.RegisterRequest;
 import com.example.spring_boot_project_api.dto.response.auth.AuthResponse;
-import com.example.spring_boot_project_api.dto.response.auth.UserResponse;
+import com.example.spring_boot_project_api.dto.response.user.UserResponse;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.AuthService;
 import com.example.spring_boot_project_api.util.SecurityUtils;

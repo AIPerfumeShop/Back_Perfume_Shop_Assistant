@@ -11,11 +11,12 @@ import com.example.spring_boot_project_api.config.JwtTokenProvider;
 import com.example.spring_boot_project_api.dto.request.auth.LoginRequest;
 import com.example.spring_boot_project_api.dto.request.auth.RegisterRequest;
 import com.example.spring_boot_project_api.dto.response.auth.AuthResponse;
-import com.example.spring_boot_project_api.dto.response.auth.UserResponse;
+import com.example.spring_boot_project_api.dto.response.user.UserResponse;
 import com.example.spring_boot_project_api.enums.Role;
 import com.example.spring_boot_project_api.exception.ConflictException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
+import com.example.spring_boot_project_api.mapper.UserMapper;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.AuthService;
@@ -65,6 +66,9 @@ public class AuthServiceImpl implements AuthService {
 
         verifyPassword(request.password(), user);
 
+        if (Boolean.TRUE.equals(user.getIsDeleted())) {
+            throw new UnauthorizedException("Account has been deleted");
+        }
         if (!Boolean.TRUE.equals(user.getIsActive())) {
             throw new UnauthorizedException("Account is disabled");
         }
@@ -76,7 +80,7 @@ public class AuthServiceImpl implements AuthService {
     public UserResponse me(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-        return toUserResponse(user);
+        return UserMapper.toUserResponse(user);
     }
 
     private void verifyPassword(String rawPassword, User user) {
@@ -100,17 +104,6 @@ public class AuthServiceImpl implements AuthService {
 
     private AuthResponse buildAuthResponse(User user) {
         String token = tokenProvider.generateToken(user);
-        return AuthResponse.of(token, tokenProvider.getExpirationMs(), toUserResponse(user));
-    }
-
-    private UserResponse toUserResponse(User user) {
-        return new UserResponse(
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getRole(),
-                user.getIsActive(),
-                user.getCreatedAt());
+        return AuthResponse.of(token, tokenProvider.getExpirationMs(), UserMapper.toUserResponse(user));
     }
 }
