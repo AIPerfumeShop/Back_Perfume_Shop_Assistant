@@ -51,6 +51,19 @@ public class GlobalExceptionHandler {
                 .body(error);
     }
 
+    //Unauthorized 401
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorized(UnauthorizedException ex){
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.UNAUTHORIZED.value(),
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(error);
+    }
+
     //Conflict 409
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex){

@@ -2,13 +2,23 @@ package com.example.spring_boot_project_api.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
+
+import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigSource) throws Exception {
@@ -18,7 +28,22 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .csrf(csrf -> csrf.disable())
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint((request, response, ex) -> writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
+                .accessDeniedHandler((request, response, ex) -> writeJson(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden"))
+            )
             .authorizeHttpRequests(auth -> auth
+                // Admin panel (JWT role gated)
+                .requestMatchers("/api/auth/me").authenticated()
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/dashboard/**").hasRole("ADMIN")
+                .requestMatchers("/api/analytics/**").hasRole("ADMIN")
+                .requestMatchers("/api/statistics/**").hasRole("ADMIN")
+                .requestMatchers("/api/customers/**").hasRole("ADMIN")
+                .requestMatchers("/api/payments/**").hasRole("ADMIN")
+                // Public
+                .requestMatchers("/api/auth/login").permitAll()
+                .requestMatchers("/api/auth/register").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/ai/**").permitAll()
                 .requestMatchers("/swagger-ui/**").permitAll()
@@ -28,17 +53,18 @@ public class SecurityConfig {
                 .requestMatchers("/api/categories/**").permitAll()
                 .requestMatchers("/api/products/**").permitAll()
                 .requestMatchers("/api/upload/**").permitAll()
-                .requestMatchers("/api/dashboard/**").permitAll()
-                .requestMatchers("/api/analytics/**").permitAll()
-                .requestMatchers("/api/statistics/**").permitAll()
-                .requestMatchers("/api/customers/**").permitAll()
                 .requestMatchers("/api/orders/**").permitAll()
-                .requestMatchers("/api/admin/orders/**").permitAll()
-                .requestMatchers("/api/admin/reviews/**").permitAll()
-                .requestMatchers("/api/payments/**").permitAll()
                 .requestMatchers("/api/cs/**").permitAll()
                 .anyRequest().authenticated()
-            );
+            )
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private void writeJson(HttpServletResponse response, int status, String message) throws java.io.IOException {
+        response.setStatus(status);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write("{\"status\":" + status + ",\"message\":\"" + message + "\"}");
     }
 }

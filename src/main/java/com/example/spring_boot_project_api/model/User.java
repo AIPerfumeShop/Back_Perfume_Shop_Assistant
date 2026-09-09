@@ -27,7 +27,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     //name
-    @Column(name = "name", nullable = false, length = 100)
+    @Column(name = "fullname", nullable = false, length = 100)
     @NotBlank(message = "Full name is required")
     @Size(max = 100, message = "Full name must be under 100 characters")
     private String name;
