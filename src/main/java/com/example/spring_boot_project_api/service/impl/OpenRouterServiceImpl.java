@@ -3,6 +3,7 @@ package com.example.spring_boot_project_api.service.impl;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -37,19 +38,36 @@ public class OpenRouterServiceImpl implements OpenRouterService {
 
     private final String model;
 
+    private final String systemPrompt;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OpenRouterServiceImpl(
             @Value("${openrouter.url}") String url,
             @Value("${openrouter.api-key}") String apiKey,
-            @Value("${openrouter.model}") String model) {
+            @Value("${openrouter.model}") String model,
+            @Value("${ai.system-prompt:"
+                    + "You are the friendly assistant of Blossom Fragrance perfume shop. "
+                    + "Recommend only perfumes that exist in the shop catalog. "
+                    + "Keep answers SHORT and easy to skim: at most 3-6 short bullet points "
+                    + "or 2-4 sentences. Never write long essays, huge tables, or long "
+                    + "introductions. Skip closing questions like 'what would you like next?' "
+                    + "unless the customer asks for help narrowing down.}") String systemPrompt) {
 
         this.apiKey = apiKey;
         this.model = model;
+        this.systemPrompt = systemPrompt;
 
         this.restClient = RestClient.builder()
                 .baseUrl(url)
                 .build();
+    }
+
+    private List<OpenRouterMessage> withSystemPrompt(List<OpenRouterMessage> messages) {
+        List<OpenRouterMessage> all = new ArrayList<>(messages.size() + 1);
+        all.add(new OpenRouterMessage("system", systemPrompt));
+        all.addAll(messages);
+        return all;
     }
 
     @Override
@@ -72,7 +90,7 @@ public class OpenRouterServiceImpl implements OpenRouterService {
             // Create OpenRouter request
             OpenRouterRequest request = new OpenRouterRequest(
                     model,
-                    openRouterMessages);
+                    withSystemPrompt(openRouterMessages));
 
             // Send request to OpenRouter
             OpenRouterResponse response = restClient.post()
@@ -125,7 +143,7 @@ public class OpenRouterServiceImpl implements OpenRouterService {
                     })
                     .toList();
 
-            OpenRouterRequest request = new OpenRouterRequest(model, openRouterMessages, true);
+            OpenRouterRequest request = new OpenRouterRequest(model, withSystemPrompt(openRouterMessages), true);
 
             restClient.post()
                     .contentType(MediaType.APPLICATION_JSON)
