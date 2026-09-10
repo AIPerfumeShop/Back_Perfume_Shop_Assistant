@@ -96,18 +96,6 @@ public class TelegramServiceImpl implements TelegramService {
         sendMessage(buildOrderNotification(order));
     }
 
-    @Override
-    public void sendRecommendationSummary(String userName, List<String> productLines) {
-        if (productLines == null || productLines.isEmpty()) {
-            return;
-        }
-        StringBuilder text = new StringBuilder("AI recommendation for " + userName);
-        for (String line : productLines) {
-            text.append("\n- ").append(line);
-        }
-        sendMessage(text.toString());
-    }
-
     private String buildOrderNotification(OrderResponse order) {
         StringBuilder text = new StringBuilder("🛒 New Order Received!")
                 .append("\n\nOrder Number: ORD-").append(order.getId())

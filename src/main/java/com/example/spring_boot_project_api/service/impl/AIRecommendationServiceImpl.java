@@ -33,7 +33,6 @@ import com.example.spring_boot_project_api.repository.ProductRepository.ProductR
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.repository.specification.ProductSpecification;
 import com.example.spring_boot_project_api.service.AIRecommendationService;
-import com.example.spring_boot_project_api.service.TelegramService;
 
 @Service
 @Transactional
@@ -44,21 +43,18 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
     private final AIRecommendationClickRepository clickRepository;
     private final AIConversationRepository conversationRepository;
     private final UserRepository userRepository;
-    private final TelegramService telegramService;
 
     public AIRecommendationServiceImpl(
             ProductRepository productRepository,
             AIRecommendationRepository recommendationRepository,
             AIRecommendationClickRepository clickRepository,
             AIConversationRepository conversationRepository,
-            UserRepository userRepository,
-            TelegramService telegramService) {
+            UserRepository userRepository) {
         this.productRepository = productRepository;
         this.recommendationRepository = recommendationRepository;
         this.clickRepository = clickRepository;
         this.conversationRepository = conversationRepository;
         this.userRepository = userRepository;
-        this.telegramService = telegramService;
     }
 
     @Override
@@ -110,16 +106,6 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
                 responses.get(i).setRecommendationId(saved.get(i).getId());
             }
         }
-
-        telegramService.sendRecommendationSummary(
-                conversation != null && conversation.getUserName() != null
-                        ? conversation.getUserName()
-                        : "User #" + userId,
-                responses.stream()
-                        .limit(5)
-                        .map(response -> response.getProductName()
-                                + (response.getBrand() != null ? " (" + response.getBrand() + ")" : ""))
-                        .toList());
 
         return responses;
     }
