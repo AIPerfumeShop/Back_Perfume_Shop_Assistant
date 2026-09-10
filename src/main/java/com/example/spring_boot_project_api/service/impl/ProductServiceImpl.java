@@ -11,8 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.product.ProductResponse;
+import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.ProductMapper;
+import com.example.spring_boot_project_api.model.Brand;
 import com.example.spring_boot_project_api.model.Product;
+import com.example.spring_boot_project_api.repository.BrandRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository.ProductRatingStat;
 import com.example.spring_boot_project_api.repository.specification.ProductSpecification;
@@ -23,10 +26,13 @@ import com.example.spring_boot_project_api.service.ProductService;
 public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final ProductMapper productMapper;
+    private final BrandRepository brandRepository;
 
-    public ProductServiceImpl(ProductRepository productRepository, ProductMapper productMapper) {
+    public ProductServiceImpl(ProductRepository productRepository, ProductMapper productMapper,
+                              BrandRepository brandRepository) {
         this.productRepository = productRepository;
         this.productMapper = productMapper;
+        this.brandRepository = brandRepository;
     }
 
     @Override
@@ -67,5 +73,17 @@ public class ProductServiceImpl implements ProductService {
                 products.getTotalPages(),
                 products.getNumber(),
                 products.getSize());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<ProductResponse> getProductsByBrand(Long brandId, ProductFilterRequest filter) {
+        Brand brand = brandRepository.findById(brandId)
+                .orElseThrow(() -> new ResourceNotFoundException("Brand not found with ID : " + brandId));
+        if (filter == null) {
+            filter = new ProductFilterRequest();
+        }
+        filter.setBrand(brand.getName());
+        return getAllProducts(filter);
     }
 }

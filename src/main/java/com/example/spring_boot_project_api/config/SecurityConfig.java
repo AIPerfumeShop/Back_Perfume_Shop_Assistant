@@ -35,6 +35,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Admin panel (JWT role gated)
                 .requestMatchers("/api/auth/me").authenticated()
+                .requestMatchers("/api/auth/change-password").authenticated()
+                .requestMatchers("/api/auth/change-email/**").authenticated()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/dashboard/**").hasRole("ADMIN")
                 .requestMatchers("/api/analytics/**").hasRole("ADMIN")
