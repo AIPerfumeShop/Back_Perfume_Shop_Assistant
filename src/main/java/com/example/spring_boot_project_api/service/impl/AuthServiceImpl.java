@@ -83,6 +83,17 @@ public class AuthServiceImpl implements AuthService {
         return UserMapper.toUserResponse(user);
     }
 
+    @Override
+    public void logout(String token) {
+        if (token == null || token.isBlank()) {
+            throw new UnauthorizedException("Authentication required");
+        }
+        if (!tokenProvider.validate(token)) {
+            throw new UnauthorizedException("Invalid token");
+        }
+        tokenProvider.blacklist(token);
+    }
+
     private void verifyPassword(String rawPassword, User user) {
         String stored = user.getPassword();
         boolean matches;

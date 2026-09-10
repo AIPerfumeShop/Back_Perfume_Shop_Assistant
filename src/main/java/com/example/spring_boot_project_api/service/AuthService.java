@@ -12,4 +12,6 @@ public interface AuthService {
     AuthResponse login(LoginRequest request);
 
     UserResponse me(Long userId);
+
+    void logout(String token);
 }

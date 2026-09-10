@@ -36,7 +36,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith(BEARER_PREFIX)) {
             String token = header.substring(BEARER_PREFIX.length());
-            if (tokenProvider.validate(token)) {
+            if (tokenProvider.validate(token) && !tokenProvider.isBlacklisted(token)) {
                 try {
                     Long userId = tokenProvider.getUserId(token);
                     User user = userRepository.findById(userId).orElse(null);

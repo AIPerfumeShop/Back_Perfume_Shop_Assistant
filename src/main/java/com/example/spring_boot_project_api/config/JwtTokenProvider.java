@@ -2,6 +2,8 @@ package com.example.spring_boot_project_api.config;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.crypto.SecretKey;
 
@@ -20,6 +22,7 @@ public class JwtTokenProvider {
 
     private final String secret;
     private final long expirationMs;
+    private final Set<String> blacklist = ConcurrentHashMap.newKeySet();
 
     public JwtTokenProvider(@Value("${jwt.secret}") String secret,
                             @Value("${jwt.expiration-ms}") long expirationMs) {
@@ -50,6 +53,14 @@ public class JwtTokenProvider {
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
+    }
+
+    public void blacklist(String token) {
+        blacklist.add(token);
+    }
+
+    public boolean isBlacklisted(String token) {
+        return blacklist.contains(token);
     }
 
     public Long getUserId(String token) {

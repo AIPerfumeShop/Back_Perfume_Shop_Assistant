@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -43,5 +44,14 @@ public class AuthController {
         Long userId = SecurityUtils.currentUserId()
                 .orElseThrow(() -> new UnauthorizedException("Authentication required"));
         return ResponseEntity.ok(authService.me(userId));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new UnauthorizedException("Authentication required");
+        }
+        authService.logout(authorization.substring(7));
+        return ResponseEntity.noContent().build();
     }
 }
