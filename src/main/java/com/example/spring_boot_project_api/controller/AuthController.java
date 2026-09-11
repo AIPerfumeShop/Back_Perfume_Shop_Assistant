@@ -14,6 +14,7 @@ import com.example.spring_boot_project_api.dto.request.auth.ChangeEmailRequest;
 import com.example.spring_boot_project_api.dto.request.auth.ChangeEmailVerifyRequest;
 import com.example.spring_boot_project_api.dto.request.auth.ChangePasswordRequest;
 import com.example.spring_boot_project_api.dto.request.auth.ForgotPasswordRequest;
+import com.example.spring_boot_project_api.dto.request.auth.GoogleLoginRequest;
 import com.example.spring_boot_project_api.dto.request.auth.LoginRequest;
 import com.example.spring_boot_project_api.dto.request.auth.RegisterRequest;
 import com.example.spring_boot_project_api.dto.request.auth.ResendOtpRequest;
@@ -21,10 +22,12 @@ import com.example.spring_boot_project_api.dto.request.auth.ResetPasswordRequest
 import com.example.spring_boot_project_api.dto.request.auth.UpdateProfileRequest;
 import com.example.spring_boot_project_api.dto.request.auth.VerifyOtpRequest;
 import com.example.spring_boot_project_api.dto.response.auth.AuthResponse;
+import com.example.spring_boot_project_api.dto.response.auth.GoogleConfigResponse;
 import com.example.spring_boot_project_api.dto.response.auth.MessageResponse;
 import com.example.spring_boot_project_api.dto.response.user.UserResponse;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.AuthService;
+import com.example.spring_boot_project_api.service.GoogleAuthService;
 import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import jakarta.validation.Valid;
@@ -34,9 +37,26 @@ import jakarta.validation.Valid;
 public class AuthController {
 
     private final AuthService authService;
+    private final GoogleAuthService googleAuthService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService,
+                          GoogleAuthService googleAuthService) {
         this.authService = authService;
+        this.googleAuthService = googleAuthService;
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponse> googleLogin(
+            @Valid @RequestBody GoogleLoginRequest request) {
+        return ResponseEntity.ok(googleAuthService.googleLogin(request));
+    }
+
+    @GetMapping("/google/config")
+    public ResponseEntity<GoogleConfigResponse> googleConfig() {
+        boolean enabled = googleAuthService.isEnabled();
+        return ResponseEntity.ok(
+                GoogleConfigResponse.of(enabled,
+                        enabled ? googleAuthService.clientId() : null));
     }
 
     @PostMapping("/register")
