@@ -44,6 +44,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/statistics/**").hasRole("ADMIN")
                 .requestMatchers("/api/customers/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/payments/*/verify").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/payments/history/order/*").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/payments/history/user/me").authenticated()
                 .requestMatchers("/api/payments/**").hasRole("ADMIN")
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
                 // Public

@@ -147,17 +147,45 @@ public class PaymentController {
     @GetMapping("/history/order/{orderId}")
     public ResponseEntity<List<PaymentResponse>> getPaymentHistoryByOrder(
             @PathVariable Long orderId) {
-        return ResponseEntity.ok(
-                paymentService.getPaymentHistoryByOrder(orderId));
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
+
+        List<PaymentResponse> payments =
+                paymentService.getPaymentHistoryByOrder(orderId);
+
+        if (!payments.isEmpty()
+                && (payments.get(0).getOrderUserId() == null
+                        || !userId.equals(
+                                payments.get(0).getOrderUserId()))) {
+            throw new ForbiddenException(
+                    "You don't have permission to view this payment history");
+        }
+
+        return ResponseEntity.ok(payments);
     }
 
-    //Payment history by user
-    @Operation(summary = "Get payment history for a user")
+    //Payment history of the authenticated user
+    @Operation(summary = "Get payment history of the authenticated user")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Payment history retrieved successfully")
+    })
+    @GetMapping("/history/me")
+    public ResponseEntity<List<PaymentResponse>> getPaymentHistoryByUser() {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
+        return ResponseEntity.ok(
+                paymentService.getPaymentHistoryByUser(userId));
+    }
+
+    //Payment history by user (admin)
+    @Operation(summary = "Get payment history for a user (admin)")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Payment history retrieved successfully")
     })
     @GetMapping("/history/user/{userId}")
-    public ResponseEntity<List<PaymentResponse>> getPaymentHistoryByUser(
+    public ResponseEntity<List<PaymentResponse>> getPaymentHistoryByUserAdmin(
             @PathVariable Long userId) {
         return ResponseEntity.ok(
                 paymentService.getPaymentHistoryByUser(userId));
