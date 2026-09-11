@@ -62,7 +62,7 @@ public class AuthController {
         boolean enabled = telegramAuthService.isEnabled();
         return ResponseEntity.ok(
                 TelegramConfigResponse.of(enabled,
-                        enabled ? telegramAuthService.botUsername() : null));
+                        enabled ? telegramAuthService.clientId() : null));
     }
 
     @PostMapping("/google")

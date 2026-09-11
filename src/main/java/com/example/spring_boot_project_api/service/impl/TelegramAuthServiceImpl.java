@@ -1,15 +1,14 @@
 package com.example.spring_boot_project_api.service.impl;
 
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.security.MessageDigest;
 import java.util.Base64;
-import java.util.HexFormat;
+import java.util.List;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,21 +27,23 @@ import com.example.spring_boot_project_api.service.TelegramAuthService;
 @Service
 public class TelegramAuthServiceImpl implements TelegramAuthService {
 
-    private static final String HMAC_ALGORITHM = "HmacSHA256";
-    private static final long MAX_AUTH_AGE_SECONDS = 24 * 60 * 60L;
+    private static final String TELEGRAM_ISSUER = "https://oauth.telegram.org";
     private static final String EMAIL_DOMAIN = "blossom.local";
     private static final String SYNT_EMAIL_PREFIX = "tg_";
 
     private final TelegramBotProperties properties;
+    private final JwtDecoder jwtDecoder;
     private final UserRepository userRepository;
     private final JwtTokenProvider tokenProvider;
     private final PasswordEncoder passwordEncoder;
 
     public TelegramAuthServiceImpl(TelegramBotProperties properties,
+                                   @Qualifier("telegramJwtDecoder") JwtDecoder jwtDecoder,
                                    UserRepository userRepository,
                                    JwtTokenProvider tokenProvider,
                                    PasswordEncoder passwordEncoder) {
         this.properties = properties;
+        this.jwtDecoder = jwtDecoder;
         this.userRepository = userRepository;
         this.tokenProvider = tokenProvider;
         this.passwordEncoder = passwordEncoder;
@@ -56,17 +57,18 @@ public class TelegramAuthServiceImpl implements TelegramAuthService {
                     "Telegram sign-in is not configured on this server");
         }
 
-        validateSignature(request);
+        Jwt idToken = validateIdToken(request.idToken());
+        Long telegramId = telegramIdOf(idToken);
 
-        User user = userRepository.findByTelegramId(request.id())
+        User user = userRepository.findByTelegramId(telegramId)
                 .map(existing -> {
                     if (Boolean.TRUE.equals(existing.getIsDeleted())) {
                         throw new UnauthorizedException("Account has been deleted");
                     }
-                    updateTelegramProfile(existing, request);
+                    updateTelegramProfile(existing, idToken);
                     return existing;
                 })
-                .orElseGet(() -> createUser(request));
+                .orElseGet(() -> createUser(idToken, telegramId));
 
         String token = tokenProvider.generateToken(user);
         return AuthResponse.of(
@@ -76,62 +78,77 @@ public class TelegramAuthServiceImpl implements TelegramAuthService {
 
     @Override
     public boolean isEnabled() {
-        return properties.hasToken() && properties.getUsername() != null
-                && !properties.getUsername().isBlank();
+        return properties.hasToken() && properties.getClientId() != null;
     }
 
     @Override
-    public String botUsername() {
-        return properties.getUsername();
+    public String clientId() {
+        return properties.getClientId();
     }
 
-    private void validateSignature(TelegramLoginRequest request) {
-        long nowSeconds = System.currentTimeMillis() / 1000L;
-        long authDate = request.authDate() == null ? 0L : request.authDate();
-
-        if (nowSeconds - authDate > MAX_AUTH_AGE_SECONDS || authDate > nowSeconds + 5 * 60L) {
-            throw new UnauthorizedException("Telegram login data has expired or is from the future");
+    private Jwt validateIdToken(String idToken) {
+        if (idToken == null || idToken.isBlank()) {
+            throw new UnauthorizedException("Telegram ID token is required");
         }
 
-        if (!properties.hasToken() || request.hash() == null || request.hash().isBlank()) {
-            throw new UnauthorizedException("Invalid Telegram login hash");
+        final Jwt jwt;
+        try {
+            jwt = jwtDecoder.decode(idToken);
+        } catch (JwtException | IllegalArgumentException ex) {
+            throw new UnauthorizedException(
+                    "Invalid or expired Telegram ID token");
         }
 
-        String dataCheckString = "auth_date=" + authDate
-                + "\nuser_id=" + request.id();
-        String expectedHash = hmacSha256Hex(dataCheckString, properties.getToken());
-
-        if (!MessageDigest.isEqual(
-                request.hash().trim().getBytes(StandardCharsets.UTF_8),
-                expectedHash.getBytes(StandardCharsets.UTF_8))) {
-            throw new UnauthorizedException("Invalid Telegram login hash");
+        String issuer = jwt.getClaimAsString("iss");
+        if (!TELEGRAM_ISSUER.equals(issuer)) {
+            throw new UnauthorizedException("Invalid Telegram ID token issuer");
         }
+
+        String clientId = properties.getClientId();
+        List<String> audiences = jwt.getAudience();
+        if (clientId == null || audiences == null
+                || audiences.stream().noneMatch(clientId::equals)) {
+            throw new UnauthorizedException(
+                    "Telegram ID token is not intended for this application");
+        }
+
+        return jwt;
     }
 
-    private User createUser(TelegramLoginRequest request) {
+    private Long telegramIdOf(Jwt jwt) {
+        Number id = jwt.getClaim("id");
+        if (id != null) {
+            return id.longValue();
+        }
+        String sub = jwt.getSubject();
+        if (sub != null && sub.matches("\\d+")) {
+            return Long.parseLong(sub);
+        }
+        throw new UnauthorizedException("Telegram ID token is missing user id");
+    }
+
+    private User createUser(Jwt idToken, Long telegramId) {
         User user = new User();
-        user.setName(displayName(request));
-        user.setEmail(syntheticEmail(request.id()));
+        user.setName(displayName(idToken));
+        user.setEmail(syntheticEmail(telegramId));
         user.setPassword(autogeneratedPassword());
         user.setRole(Role.CUSTOMER);
         user.setIsActive(true);
-        user.setTelegramId(request.id());
-        user.setTelegramPhotoUrl(request.photoUrl());
+        user.setTelegramId(telegramId);
+        user.setTelegramPhotoUrl(photoUrl(idToken));
         return userRepository.save(user);
     }
 
-    private void updateTelegramProfile(User user, TelegramLoginRequest request) {
+    private void updateTelegramProfile(User user, Jwt idToken) {
         boolean changed = false;
-        if (request.username() != null && !request.username().isBlank()) {
-            user.setName(request.username().trim());
-            changed = true;
-        } else if (request.firstName() != null && !request.firstName().isBlank()) {
-            user.setName(displayName(request));
+        String name = displayName(idToken);
+        if (name != null && !name.equals(user.getName())) {
+            user.setName(name);
             changed = true;
         }
-        if (request.photoUrl() != null && !request.photoUrl().isBlank()
-                && !request.photoUrl().equals(user.getTelegramPhotoUrl())) {
-            user.setTelegramPhotoUrl(request.photoUrl());
+        String photoUrl = photoUrl(idToken);
+        if (photoUrl != null && !photoUrl.equals(user.getTelegramPhotoUrl())) {
+            user.setTelegramPhotoUrl(photoUrl);
             changed = true;
         }
         if (changed) {
@@ -139,14 +156,21 @@ public class TelegramAuthServiceImpl implements TelegramAuthService {
         }
     }
 
-    private String displayName(TelegramLoginRequest request) {
-        if (request.username() != null && !request.username().isBlank()) {
-            return request.username().trim();
+    private String displayName(Jwt idToken) {
+        String username = idToken.getClaimAsString("preferred_username");
+        if (username != null && !username.isBlank()) {
+            return username.trim();
         }
-        return request.firstName().trim()
-                + (request.lastName() != null && !request.lastName().isBlank()
-                        ? " " + request.lastName().trim()
-                        : "");
+        String name = idToken.getClaimAsString("name");
+        if (name != null && !name.isBlank()) {
+            return name.trim();
+        }
+        return "Telegram User";
+    }
+
+    private String photoUrl(Jwt idToken) {
+        String picture = idToken.getClaimAsString("picture");
+        return picture == null || picture.isBlank() ? null : picture;
     }
 
     private String syntheticEmail(Long telegramId) {
@@ -159,18 +183,5 @@ public class TelegramAuthServiceImpl implements TelegramAuthService {
         return passwordEncoder.encode(
                 Base64.getUrlEncoder().withoutPadding()
                         .encodeToString(bytes));
-    }
-
-    private String hmacSha256Hex(String data, String secret) {
-        try {
-            Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-            mac.init(new SecretKeySpec(
-                    secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM));
-            return HexFormat.of().formatHex(
-                    mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception ex) {
-            throw new IllegalStateException(
-                    "HMAC-SHA256 is not available on this JVM", ex);
-        }
     }
 }

@@ -9,5 +9,5 @@ public interface TelegramAuthService {
 
     boolean isEnabled();
 
-    String botUsername();
+    String clientId();
 }
