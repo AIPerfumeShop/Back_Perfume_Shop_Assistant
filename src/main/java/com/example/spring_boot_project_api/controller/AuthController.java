@@ -19,18 +19,15 @@ import com.example.spring_boot_project_api.dto.request.auth.LoginRequest;
 import com.example.spring_boot_project_api.dto.request.auth.RegisterRequest;
 import com.example.spring_boot_project_api.dto.request.auth.ResendOtpRequest;
 import com.example.spring_boot_project_api.dto.request.auth.ResetPasswordRequest;
-import com.example.spring_boot_project_api.dto.request.auth.TelegramLoginRequest;
 import com.example.spring_boot_project_api.dto.request.auth.UpdateProfileRequest;
 import com.example.spring_boot_project_api.dto.request.auth.VerifyOtpRequest;
 import com.example.spring_boot_project_api.dto.response.auth.AuthResponse;
 import com.example.spring_boot_project_api.dto.response.auth.GoogleConfigResponse;
 import com.example.spring_boot_project_api.dto.response.auth.MessageResponse;
-import com.example.spring_boot_project_api.dto.response.auth.TelegramConfigResponse;
 import com.example.spring_boot_project_api.dto.response.user.UserResponse;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.AuthService;
 import com.example.spring_boot_project_api.service.GoogleAuthService;
-import com.example.spring_boot_project_api.service.TelegramAuthService;
 import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import jakarta.validation.Valid;
@@ -41,28 +38,11 @@ public class AuthController {
 
     private final AuthService authService;
     private final GoogleAuthService googleAuthService;
-    private final TelegramAuthService telegramAuthService;
 
     public AuthController(AuthService authService,
-                          GoogleAuthService googleAuthService,
-                          TelegramAuthService telegramAuthService) {
+                          GoogleAuthService googleAuthService) {
         this.authService = authService;
         this.googleAuthService = googleAuthService;
-        this.telegramAuthService = telegramAuthService;
-    }
-
-    @PostMapping("/telegram")
-    public ResponseEntity<AuthResponse> telegramLogin(
-            @Valid @RequestBody TelegramLoginRequest request) {
-        return ResponseEntity.ok(telegramAuthService.telegramLogin(request));
-    }
-
-    @GetMapping("/telegram/config")
-    public ResponseEntity<TelegramConfigResponse> telegramConfig() {
-        boolean enabled = telegramAuthService.isEnabled();
-        return ResponseEntity.ok(
-                TelegramConfigResponse.of(enabled,
-                        enabled ? telegramAuthService.clientId() : null));
     }
 
     @PostMapping("/google")

@@ -47,14 +47,6 @@ public class User {
     @Column(name = "phone", length = 30)
     private String phone;
 
-    //Telegram ID (set only for Telegram-logged-in users)
-    @Column(name = "telegram_id", unique = true)
-    private Long telegramId;
-
-    //Telegram profile photo URL
-    @Column(name = "telegram_photo_url", length = 512)
-    private String telegramPhotoUrl;
-
     //role
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)
