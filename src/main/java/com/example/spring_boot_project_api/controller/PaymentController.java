@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
+import com.example.spring_boot_project_api.exception.ForbiddenException;
+import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.PaymentService;
+import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -108,6 +111,32 @@ public class PaymentController {
     public ResponseEntity<Boolean> processPayment(
             @PathVariable Long id) {
         return ResponseEntity.ok(paymentService.processPayment(id));
+    }
+
+    //Verify a KHQR payment against Bakong
+    @Operation(summary = "Verify a KHQR payment status against Bakong")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Payment checked successfully"),
+        @ApiResponse(responseCode = "400", description = "Payment has no KHQR code"),
+        @ApiResponse(responseCode = "404", description = "Payment not found")
+    })
+    @PostMapping("/{id}/verify")
+    public ResponseEntity<PaymentResponse> verifyBakongPayment(
+            @PathVariable Long id) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
+
+        PaymentResponse payment = paymentService.getPayment(id);
+
+        if (payment.getOrderUserId() == null
+                || !userId.equals(payment.getOrderUserId())) {
+            throw new ForbiddenException(
+                    "You don't have permission to verify this payment");
+        }
+
+        return ResponseEntity.ok(
+                paymentService.verifyBakongPayment(id));
     }
 
     //Payment history by order

@@ -45,6 +45,17 @@ public interface PaymentService {
     boolean processPayment(Long paymentId);
 
     /**
+     * Create a PENDING payment and generate a KHQR QR code via Bakong.
+     */
+    Payment initBakongPayment(Order order);
+
+    /**
+     * Check a KHQR payment's status against Bakong and, if paid,
+     * mark both the payment as SUCCESSFUL and the order as PAID.
+     */
+    PaymentResponse verifyBakongPayment(Long paymentId);
+
+    /**
      * List the payment history for a given order.
      */
     List<PaymentResponse> getPaymentHistoryByOrder(Long orderId);

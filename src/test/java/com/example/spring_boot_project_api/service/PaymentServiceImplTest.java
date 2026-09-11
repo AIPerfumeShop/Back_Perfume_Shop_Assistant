@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -19,18 +20,25 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
+import com.example.spring_boot_project_api.dto.response.bakong.BakongResponse;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.enums.OrderStatus;
 import com.example.spring_boot_project_api.enums.PaymentMethod;
 import com.example.spring_boot_project_api.enums.PaymentStatus;
 import com.example.spring_boot_project_api.exception.BadRequestException;
+import com.example.spring_boot_project_api.exception.BakongException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.PaymentMapper;
 import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
+import com.example.spring_boot_project_api.service.BakongService;
 import com.example.spring_boot_project_api.service.impl.PaymentServiceImpl;
+
+import kh.gov.nbc.bakong_khqr.model.KHQRData;
+import kh.gov.nbc.bakong_khqr.model.KHQRResponse;
+import kh.gov.nbc.bakong_khqr.model.KHQRStatus;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceImplTest {
@@ -43,6 +51,9 @@ class PaymentServiceImplTest {
 
     @Mock
     private PaymentMapper paymentMapper;
+
+    @Mock
+    private BakongService bakongService;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -183,5 +194,101 @@ class PaymentServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> paymentService.getPaymentByTransactionId("nope"));
+    }
+
+    @Test
+    void initBakongPayment_success_setsQrAndMd5() {
+        Order order = newOrder();
+        KHQRData data = new KHQRData();
+        data.setQr("00020101021XKHQR");
+        data.setMd5("abc123");
+        KHQRStatus status = new KHQRStatus();
+        status.setCode(0);
+        KHQRResponse<KHQRData> qrResponse = new KHQRResponse<>();
+        qrResponse.setKHQRStatus(status);
+        qrResponse.setData(data);
+
+        when(bakongService.generateQR(any()))
+                .thenReturn(qrResponse);
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Payment payment = paymentService.initBakongPayment(order);
+
+        assertNotNull(payment);
+        assertEquals(PaymentMethod.KHQR, payment.getPaymentMethod());
+        assertEquals(PaymentStatus.PENDING, payment.getStatus());
+        assertEquals("00020101021XKHQR", payment.getQrText());
+        assertEquals("abc123", payment.getMd5());
+    }
+
+    @Test
+    void initBakongPayment_gatewayFailure_throwsBakong() {
+        Order order = newOrder();
+        KHQRStatus status = new KHQRStatus();
+        status.setCode(1);
+        status.setMessage("missing field");
+        KHQRResponse<KHQRData> qrResponse = new KHQRResponse<>();
+        qrResponse.setKHQRStatus(status);
+
+        when(bakongService.generateQR(any())).thenReturn(qrResponse);
+
+        assertThrows(BakongException.class,
+                () -> paymentService.initBakongPayment(order));
+    }
+
+    @Test
+    void verifyBakongPayment_success_marksPaidAndUpdatesOrder() {
+        Order order = newOrder();
+        Payment payment = newPayment(order, PaymentStatus.PENDING);
+        payment.setMd5("abc123");
+
+        Map<String, Object> data = Map.of("externalRef", "100FT123");
+
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(bakongService.checkTransactionByMD5(any()))
+                .thenReturn(new BakongResponse(0, "Success", null, data));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentMapper.toResponse(payment)).thenAnswer(inv -> toResponse(payment));
+
+        PaymentResponse result = paymentService.verifyBakongPayment(1L);
+
+        assertEquals(PaymentStatus.SUCCESSFUL, result.getStatus());
+        assertNotNull(result.getPaidAt());
+        assertEquals("100FT123", result.getExternalRef());
+        assertEquals(OrderStatus.PAID, order.getStatus());
+    }
+
+    @Test
+    void verifyBakongPayment_notPaid_staysPending() {
+        Order order = newOrder();
+        Payment payment = newPayment(order, PaymentStatus.PENDING);
+        payment.setMd5("abc123");
+
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(bakongService.checkTransactionByMD5(any()))
+                .thenReturn(new BakongResponse(1, "Not found", 1, null));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentMapper.toResponse(payment)).thenAnswer(inv -> toResponse(payment));
+
+        PaymentResponse result = paymentService.verifyBakongPayment(1L);
+
+        assertEquals(PaymentStatus.PENDING, result.getStatus());
+        assertEquals(OrderStatus.PENDING, order.getStatus());
+    }
+
+    private PaymentResponse toResponse(Payment payment) {
+        PaymentResponse r = new PaymentResponse();
+        r.setId(payment.getId());
+        r.setOrderId(payment.getOrder() != null ? payment.getOrder().getId() : null);
+        r.setPaymentMethod(payment.getPaymentMethod());
+        r.setStatus(payment.getStatus());
+        r.setTransactionId(payment.getTransactionId());
+        r.setPaidAt(payment.getPaidAt());
+        r.setErrorMessage(payment.getErrorMessage());
+        r.setExternalRef(payment.getExternalRef());
+        r.setQrText(payment.getQrText());
+        r.setMd5(payment.getMd5());
+        return r;
     }
 }

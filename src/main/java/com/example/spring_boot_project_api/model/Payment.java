@@ -48,6 +48,15 @@ public class Payment {
     @Column(name = "status", nullable = false)
     private PaymentStatus status = PaymentStatus.PENDING;
 
+    @Column(name = "qr_text", length = 2048)
+    private String qrText;
+
+    @Column(name = "md5", length = 32)
+    private String md5;
+
+    @Column(name = "external_ref", length = 100)
+    private String externalRef;
+
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 

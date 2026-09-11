@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.example.spring_boot_project_api.enums.PaymentStatus;
 import com.example.spring_boot_project_api.model.Payment;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
@@ -15,4 +16,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findAllByOrderIdOrderByCreatedAtDesc(Long orderId);
 
     List<Payment> findAllByOrderUserIdOrderByCreatedAtDesc(Long userId);
+
+    List<Payment> findAllByStatusAndMd5IsNotNull(PaymentStatus status);
 }

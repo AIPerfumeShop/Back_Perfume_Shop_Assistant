@@ -80,6 +80,24 @@
 			<version>2.54.13</version>
 		</dependency>
 
+		<!-- Bakong KHQR SDK (National Bank of Cambodia) -->
+		<dependency>
+			<groupId>kh.gov.nbc.bakong_khqr</groupId>
+			<artifactId>sdk-java</artifactId>
+			<version>1.0.0.16</version>
+		</dependency>
+		<!-- QR code image generation (ZXing) -->
+		<dependency>
+			<groupId>com.google.zxing</groupId>
+			<artifactId>core</artifactId>
+			<version>3.5.3</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.zxing</groupId>
+			<artifactId>javase</artifactId>
+			<version>3.5.3</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-devtools</artifactId>

@@ -2,6 +2,7 @@ package com.example.spring_boot_project_api.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -42,6 +43,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/analytics/**").hasRole("ADMIN")
                 .requestMatchers("/api/statistics/**").hasRole("ADMIN")
                 .requestMatchers("/api/customers/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/payments/*/verify").authenticated()
                 .requestMatchers("/api/payments/**").hasRole("ADMIN")
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
                 // Public
@@ -56,7 +58,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/categories/**").permitAll()
                 .requestMatchers("/api/products/**").permitAll()
                 .requestMatchers("/api/upload/**").permitAll()
-                .requestMatchers("/api/orders/**").permitAll()
+                .requestMatchers("/api/orders/**").authenticated()
                 .requestMatchers("/api/cs/**").permitAll()
                 .anyRequest().authenticated()
             )
