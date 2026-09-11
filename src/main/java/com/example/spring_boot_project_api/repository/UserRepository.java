@@ -12,6 +12,7 @@ import com.example.spring_boot_project_api.model.User;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
     Optional<User> findByEmail(String email);
+    Optional<User> findByTelegramId(Long telegramId);
     Boolean existsByEmail(String email);
     long countByRole(Role role);
     long countByRoleAndCreatedAtBetween(Role role, LocalDateTime start, LocalDateTime end);
