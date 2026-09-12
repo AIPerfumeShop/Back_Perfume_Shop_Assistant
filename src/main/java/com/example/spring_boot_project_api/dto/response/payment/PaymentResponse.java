@@ -14,11 +14,15 @@ import lombok.Setter;
 public class PaymentResponse {
     private Long id;
     private Long orderId;
+    private Long orderUserId;
     private PaymentMethod paymentMethod;
     private String transactionId;
     private BigDecimal amount;
     private PaymentStatus status;
     private LocalDateTime paidAt;
     private String errorMessage;
+    private String qrText;
+    private String md5;
+    private String externalRef;
     private LocalDateTime createdAt;
 }

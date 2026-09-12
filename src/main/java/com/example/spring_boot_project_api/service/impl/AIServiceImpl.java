@@ -1,6 +1,7 @@
 package com.example.spring_boot_project_api.service.impl;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +11,7 @@ import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
 import com.example.spring_boot_project_api.enums.MessageSender;
+import com.example.spring_boot_project_api.exception.AIServiceException;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.AIMapper;
@@ -53,88 +55,37 @@ public class AIServiceImpl implements AIService {
     @Transactional
     public AIChatResponse chat(Long userId, AIChatRequest request) {
 
-        // 1. Find user
-        User user = userRepository.findById(userId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found"));
+        AIConversation conversation = resolveConversation(userId, request);
+        saveUserMessage(request, conversation);
+        List<AIMessage> history = loadHistory(conversation.getId());
 
-        // 2. Find existing conversation or create new conversation
-        AIConversation conversation;
+        String aiText = openRouterService.generateResponse(history);
+        AIMessage aiMessage = saveAssistantMessage(aiText, conversation);
 
-        if (request.getConversationId() == null) {
+        return buildChatResponse(conversation.getId(), aiMessage);
+    }
 
-            // Create new conversation
-            conversation = new AIConversation();
-            conversation.setUser(user);
-            conversation.setUserName(user.getName());
-            // Generate title from first message
-            conversation.setTitle(
-                    generateConversationTitle(request.getMessage())
-            );
-            conversation = aiConversationRepository.save(conversation);
-        } else {
+    @Override
+    @Transactional
+    public AIChatResponse streamChat(Long userId, AIChatRequest request, Consumer<String> onToken) {
 
-            // Find existing conversation
-            conversation = aiConversationRepository
-                    .findById(request.getConversationId())
-                    .orElseThrow(() ->
-                            new ResourceNotFoundException("Conversation not found"));
+        AIConversation conversation = resolveConversation(userId, request);
+        saveUserMessage(request, conversation);
+        List<AIMessage> history = loadHistory(conversation.getId());
 
-            // Check ownership
-            if (!conversation.getUser().getId().equals(userId)) {
+        StringBuilder collected = new StringBuilder();
+        openRouterService.streamGenerateResponse(history, token -> {
+            collected.append(token);
+            onToken.accept(token);
+        });
 
-                throw new ForbiddenException(
-                        "You do not have access to this conversation");
-            }
+        if (collected.toString().isBlank()) {
+            throw new AIServiceException("No response received from OpenRouter");
         }
 
-        // 3. Save user's message
-        AIMessage userMessage =
-                aiMapper.toMessageEntity(request, conversation);
+        AIMessage aiMessage = saveAssistantMessage(collected.toString(), conversation);
 
-        aiMessageRepository.save(userMessage);
-
-        // 4. Load conversation history
-        List<AIMessage> history =
-                aiMessageRepository
-                        .findByConversationIdOrderByCreatedAtAsc(
-                                conversation.getId()
-                        );
-        if (history.size() > MAX_HISTORY_SIZE) {
-        history = history.subList(
-                history.size() - MAX_HISTORY_SIZE,
-                history.size()
-        );
-        }
-
-        // 5. Send conversation history to OpenRouter
-        String aiText =
-                openRouterService.generateResponse(history);
-
-        // 6. Save AI response
-        AIMessage aiMessage =
-                aiMapper.toMessageEntity(
-                        aiText,
-                        MessageSender.AI,
-                        conversation
-                );
-
-        aiMessage = aiMessageRepository.save(aiMessage);
-
-        // Update conversation activity time
-        conversation.touch();
-        aiConversationRepository.save(conversation);
-
-        // 7. Build response
-        AIChatResponse response = new AIChatResponse();
-
-        response.setConversationId(conversation.getId());
-        response.setMessageId(aiMessage.getId());
-        response.setMessage(aiMessage.getMessage());
-        response.setCreatedAt(aiMessage.getCreatedAt());
-        response.setUpdatedAt(aiMessage.getUpdatedAt());
-
-        return response;
+        return buildChatResponse(conversation.getId(), aiMessage);
     }
 
     // =========================================================
@@ -197,6 +148,73 @@ public class AIServiceImpl implements AIService {
         return messages.stream()
                 .map(aiMapper::toMessageResponse)
                 .toList();
+    }
+
+    // =========================================================
+    // CONVERSATION REUSE / PREPARATION
+    // =========================================================
+
+    private AIConversation resolveConversation(Long userId, AIChatRequest request) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (request.getConversationId() == null) {
+
+            AIConversation conversation = new AIConversation();
+            conversation.setUser(user);
+            conversation.setUserName(user.getName());
+            conversation.setTitle(generateConversationTitle(request.getMessage()));
+            return aiConversationRepository.save(conversation);
+        }
+
+        AIConversation conversation = aiConversationRepository
+                .findById(request.getConversationId())
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation not found"));
+
+        if (!conversation.getUser().getId().equals(userId)) {
+            throw new ForbiddenException("You do not have access to this conversation");
+        }
+
+        return conversation;
+    }
+
+    private void saveUserMessage(AIChatRequest request, AIConversation conversation) {
+        AIMessage userMessage = aiMapper.toMessageEntity(request, conversation);
+        aiMessageRepository.save(userMessage);
+    }
+
+    private List<AIMessage> loadHistory(Long conversationId) {
+        List<AIMessage> history =
+                aiMessageRepository
+                        .findByConversationIdOrderByCreatedAtAsc(conversationId);
+        if (history.size() > MAX_HISTORY_SIZE) {
+            history = history.subList(
+                    history.size() - MAX_HISTORY_SIZE,
+                    history.size());
+        }
+        return history;
+    }
+
+    private AIMessage saveAssistantMessage(String text, AIConversation conversation) {
+        AIMessage aiMessage =
+                aiMapper.toMessageEntity(text, MessageSender.AI, conversation);
+        aiMessage = aiMessageRepository.save(aiMessage);
+
+        conversation.touch();
+        aiConversationRepository.save(conversation);
+
+        return aiMessage;
+    }
+
+    private AIChatResponse buildChatResponse(Long conversationId, AIMessage aiMessage) {
+        AIChatResponse response = new AIChatResponse();
+        response.setConversationId(conversationId);
+        response.setMessageId(aiMessage.getId());
+        response.setMessage(aiMessage.getMessage());
+        response.setCreatedAt(aiMessage.getCreatedAt());
+        response.setUpdatedAt(aiMessage.getUpdatedAt());
+        return response;
     }
 
     // =========================================================

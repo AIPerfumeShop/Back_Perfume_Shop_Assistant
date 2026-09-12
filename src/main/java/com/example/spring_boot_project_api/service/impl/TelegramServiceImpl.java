@@ -47,8 +47,8 @@ public class TelegramServiceImpl implements TelegramService {
 
     @PostConstruct
     public void init() {
-        if (!properties.hasToken()) {
-            log.warn("Telegram bot is not configured (telegram.bot.token missing) - notifications disabled");
+        if (!properties.isEnabled()) {
+            log.warn("Telegram bot disabled (telegram.bot.enabled=false or creds missing) - notifications disabled");
             return;
         }
         bot = new TelegramLongPollingBot(properties.getToken()) {
@@ -94,18 +94,6 @@ public class TelegramServiceImpl implements TelegramService {
     @Override
     public void sendOrderNotification(OrderResponse order) {
         sendMessage(buildOrderNotification(order));
-    }
-
-    @Override
-    public void sendRecommendationSummary(String userName, List<String> productLines) {
-        if (productLines == null || productLines.isEmpty()) {
-            return;
-        }
-        StringBuilder text = new StringBuilder("AI recommendation for " + userName);
-        for (String line : productLines) {
-            text.append("\n- ").append(line);
-        }
-        sendMessage(text.toString());
     }
 
     private String buildOrderNotification(OrderResponse order) {

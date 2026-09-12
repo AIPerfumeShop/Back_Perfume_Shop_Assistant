@@ -57,8 +57,8 @@ public class OrderServiceImpl implements OrderService {
 
     //Create order
     @Override
-    public OrderResponse createOrder(CreateOrderRequest request) {
-        User user = userRepository.findById(request.getUserId())
+    public OrderResponse createOrder(Long userId, CreateOrderRequest request) {
+        User user = userRepository.findById(userId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("User not found"));
 
@@ -206,8 +206,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public CheckoutResponse checkout(CheckoutRequest request) {
-        User user = userRepository.findById(request.getUserId())
+    public CheckoutResponse checkout(Long userId, CheckoutRequest request) {
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         Order order = new Order();
@@ -225,6 +225,14 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalAmount(totalAmount);
 
         Order savedOrder = orderRepository.save(order);
+
+        // KHQR payments go through the Bakong gateway: generate a QR code and
+        // leave both order and payment PENDING until the customer scans & pays.
+        if (isKHQR(request.getPaymentMethod())) {
+            Payment payment =
+                    paymentService.initBakongPayment(savedOrder);
+            return toCheckoutResponse(payment, savedOrder);
+        }
 
         //Initialize payment
         Payment payment =
@@ -252,7 +260,14 @@ public class OrderServiceImpl implements OrderService {
         response.setPaymentMethod(payment.getPaymentMethod());
         response.setPaymentStatus(payment.getStatus());
         response.setTransactionId(payment.getTransactionId());
+        response.setQr(payment.getQrText());
+        response.setMd5(payment.getMd5());
         return response;
+    }
+
+    private boolean isKHQR(String paymentMethod) {
+        return paymentMethod != null
+                && paymentMethod.trim().equalsIgnoreCase("KHQR");
     }
 
     //Build a single order item from request, snapshotting the variant data

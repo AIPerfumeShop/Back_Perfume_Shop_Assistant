@@ -14,13 +14,13 @@ import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 
 public interface OrderService {
     //Create a new order
-    OrderResponse createOrder(CreateOrderRequest request);
+    OrderResponse createOrder(Long userId, CreateOrderRequest request);
 
     //Get order by id, with ownership check
     OrderResponse getOrderById(Long orderId, Long userId);
 
     //Checkout an order, with payment processing
-    CheckoutResponse checkout(CheckoutRequest request);
+    CheckoutResponse checkout(Long userId, CheckoutRequest request);
 
     //Get all orders of a user
     List<OrderResponse> getUserOrders(Long userId);

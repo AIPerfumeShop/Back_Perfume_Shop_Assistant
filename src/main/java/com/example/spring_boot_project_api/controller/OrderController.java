@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.order.CancelOrderRequest;
@@ -21,7 +20,9 @@ import com.example.spring_boot_project_api.dto.request.order.CreateOrderRequest;
 import com.example.spring_boot_project_api.dto.request.order.UpdateOrderStatusRequest;
 import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
+import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.OrderService;
+import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -47,7 +48,10 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
             @Valid @RequestBody CreateOrderRequest request) {
-        OrderResponse response = orderService.createOrder(request);
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
+        OrderResponse response = orderService.createOrder(userId, request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
@@ -61,7 +65,10 @@ public class OrderController {
     @PostMapping("/checkout")
     public ResponseEntity<CheckoutResponse> checkout(
             @Valid @RequestBody CheckoutRequest request) {
-        CheckoutResponse response = orderService.checkout(request);
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
+        CheckoutResponse response = orderService.checkout(userId, request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
@@ -75,20 +82,24 @@ public class OrderController {
     })
     @GetMapping("/{id}")
     public ResponseEntity<OrderResponse> getOrderById(
-            @RequestParam Long userId,
             @PathVariable Long id) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
         OrderResponse response = orderService.getOrderById(id, userId);
         return ResponseEntity.ok(response);
     }
 
     //Get all orders of a user
-    @Operation(summary = "Get all orders of a user")
+    @Operation(summary = "Get all orders of the authenticated user")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Orders retrieved successfully")
     })
-    @GetMapping("/user/{userId}")
-    public ResponseEntity<List<OrderResponse>> getUserOrders(
-            @PathVariable Long userId) {
+    @GetMapping("/user/me")
+    public ResponseEntity<List<OrderResponse>> getUserOrders() {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
         List<OrderResponse> response = orderService.getUserOrders(userId);
         return ResponseEntity.ok(response);
     }
@@ -125,9 +136,11 @@ public class OrderController {
     })
     @DeleteMapping("/{id}")
     public ResponseEntity<OrderResponse> cancelOrder(
-            @RequestParam Long userId,
             @PathVariable Long id,
             @Valid @RequestBody CancelOrderRequest request) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
         OrderResponse response =
                 orderService.cancelOrder(id, userId, request.getReason());
         return ResponseEntity.ok(response);

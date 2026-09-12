@@ -1,7 +1,10 @@
 package com.example.spring_boot_project_api.controller;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
 import com.example.spring_boot_project_api.dto.request.ai.RenameConversationRequest;
@@ -42,6 +46,36 @@ public class AIController {
     public ResponseEntity<AIChatResponse> chat(@RequestParam Long userId, @Valid @RequestBody AIChatRequest request){
         AIChatResponse response = aiService.chat(userId, request);
         return ResponseEntity.ok(response);
+    }
+
+    //Stream AI response token by token over SSE
+    @Operation(summary = "Send a message and stream the AI response (Server-Sent Events)")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "AI response streamed as text/event-stream")
+    })
+    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamChat(@RequestParam Long userId, @Valid @RequestBody AIChatRequest request){
+        // 3 minute timeout
+        SseEmitter emitter = new SseEmitter(300_000L);
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                AIChatResponse response = aiService.streamChat(userId, request, token -> {
+                    try {
+                        emitter.send(SseEmitter.event().data(token));
+                    } catch (IOException ex) {
+                        // client disconnected - keep reading upstream so the reply is still saved
+                    }
+                });
+                // final event so the frontend can sync the saved conversation
+                emitter.send(SseEmitter.event().name("done").data(response));
+                emitter.complete();
+            } catch (Exception ex) {
+                emitter.completeWithError(ex);
+            }
+        });
+
+        return emitter;
     }
 
     //get all conversations of a user

@@ -9,7 +9,10 @@ import java.math.BigDecimal;
 
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 
 import org.springframework.data.jpa.domain.Specification;
 
@@ -84,13 +87,14 @@ public class ProductSpecification {
 
             // 9. PRICE SORT — order by lowest variant price
             if (filter.isPriceSort()) {
-                Expression<BigDecimal> lowestPrice =
-                        cb.min(root.join("variants").get("price"));
-                if ("desc".equalsIgnoreCase(filter.getDirection())) {
-                    query.orderBy(cb.desc(lowestPrice));
-                } else {
-                    query.orderBy(cb.asc(lowestPrice));
-                }
+                Subquery<BigDecimal> minPrice = query.subquery(BigDecimal.class);
+                Root<ProductVariant> subVariant = minPrice.from(ProductVariant.class);
+                minPrice.select(cb.min(subVariant.get("price")));
+                minPrice.where(cb.equal(subVariant.get("product").get("id"), root.get("id")));
+                Order order = "desc".equalsIgnoreCase(filter.getDirection())
+                        ? cb.desc(minPrice)
+                        : cb.asc(minPrice);
+                query.orderBy(order);
             }
 
             return predicate;

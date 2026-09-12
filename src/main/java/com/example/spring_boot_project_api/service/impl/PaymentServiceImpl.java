@@ -2,6 +2,7 @@ package com.example.spring_boot_project_api.service.impl;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -9,8 +10,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
+import com.example.spring_boot_project_api.dto.request.bakong.CheckTransactionRequest;
+import com.example.spring_boot_project_api.dto.request.bakong.BakongRequest;
+import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
+import com.example.spring_boot_project_api.dto.response.bakong.BakongResponse;
+import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
+import com.example.spring_boot_project_api.enums.OrderStatus;
 import com.example.spring_boot_project_api.enums.PaymentMethod;
 import com.example.spring_boot_project_api.enums.PaymentStatus;
+import com.example.spring_boot_project_api.exception.BakongException;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.PaymentMapper;
@@ -18,7 +26,11 @@ import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
+import com.example.spring_boot_project_api.service.BakongService;
 import com.example.spring_boot_project_api.service.PaymentService;
+
+import kh.gov.nbc.bakong_khqr.model.KHQRData;
+import kh.gov.nbc.bakong_khqr.model.KHQRResponse;
 
 @Service
 @Transactional
@@ -27,13 +39,16 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final PaymentMapper paymentMapper;
+    private final BakongService bakongService;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               OrderRepository orderRepository,
-                              PaymentMapper paymentMapper) {
+                              PaymentMapper paymentMapper,
+                              BakongService bakongService) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.paymentMapper = paymentMapper;
+        this.bakongService = bakongService;
     }
 
     @Override
@@ -160,6 +175,85 @@ public class PaymentServiceImpl implements PaymentService {
         paymentRepository.save(payment);
 
         return success;
+    }
+
+    @Override
+    public Payment initBakongPayment(Order order) {
+        Payment payment = new Payment();
+        payment.setOrder(order);
+        payment.setPaymentMethod(PaymentMethod.KHQR);
+        payment.setAmount(order.getTotalAmount());
+        payment.setStatus(PaymentStatus.PENDING);
+        payment.setTransactionId(UUID.randomUUID().toString());
+
+        KHQRResponse<KHQRData> response = bakongService.generateQR(
+                new BakongRequest(
+                        null,
+                        order.getTotalAmount().doubleValue(),
+                        null, null, null, null, null, null,
+                        String.valueOf(order.getId()),
+                        null, null, null, null, null, null, null));
+
+        if (response == null
+                || response.getKHQRStatus() == null
+                || response.getKHQRStatus().getCode() != 0
+                || response.getData() == null
+                || response.getData().getQr() == null) {
+
+            String message = response != null
+                    && response.getKHQRStatus() != null
+                    ? response.getKHQRStatus().getMessage()
+                    : "KHQR generation failed";
+            throw new BakongException(
+                    "Failed to generate KHQR code: " + message);
+        }
+
+        payment.setMd5(response.getData().getMd5());
+        payment.setQrText(response.getData().getQr());
+
+        return paymentRepository.save(payment);
+    }
+
+    @Override
+    public PaymentResponse verifyBakongPayment(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if (payment.getStatus() == PaymentStatus.SUCCESSFUL
+                || payment.getStatus() == PaymentStatus.REFUNDED) {
+            throw new BadRequestException(
+                    "Payment is already in terminal state");
+        }
+        if (payment.getMd5() == null || payment.getMd5().isBlank()) {
+            throw new BadRequestException(
+                    "Payment has no KHQR code attached");
+        }
+
+        BakongResponse bakongResponse = bakongService.checkTransactionByMD5(
+                new CheckTransactionRequest(payment.getMd5()));
+
+        if (bakongResponse != null && bakongResponse.isSuccess()) {
+            payment.setStatus(PaymentStatus.SUCCESSFUL);
+            payment.setPaidAt(LocalDateTime.now());
+
+            if (bakongResponse.data() instanceof Map<?, ?> dataMap
+                    && dataMap.containsKey("externalRef")) {
+                Object ref = dataMap.get("externalRef");
+                payment.setExternalRef(
+                        ref == null ? null : String.valueOf(ref));
+            }
+
+            Order order = payment.getOrder();
+            if (order != null) {
+                order.setStatus(OrderStatus.PAID);
+                orderRepository.save(order);
+            }
+
+            paymentRepository.save(payment);
+        } else {
+            paymentRepository.save(payment);
+        }
+
+        return paymentMapper.toResponse(payment);
     }
 
     @Override

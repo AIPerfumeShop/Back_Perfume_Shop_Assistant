@@ -1,5 +1,8 @@
 package com.example.spring_boot_project_api.dto.request.auth;
 
-public class ForgotPasswordRequest {
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 
+public record ForgotPasswordRequest(
+        @NotBlank(message = "Email is required") @Email(message = "Email must be valid") String email) {
 }

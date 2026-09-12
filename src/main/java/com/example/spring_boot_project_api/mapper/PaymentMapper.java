@@ -18,6 +18,10 @@ public class PaymentMapper {
         response.setId(payment.getId());
         if (payment.getOrder() != null) {
             response.setOrderId(payment.getOrder().getId());
+            if (payment.getOrder().getUser() != null) {
+                response.setOrderUserId(
+                        payment.getOrder().getUser().getId());
+            }
         }
         response.setPaymentMethod(payment.getPaymentMethod());
         response.setTransactionId(payment.getTransactionId());
@@ -25,6 +29,9 @@ public class PaymentMapper {
         response.setStatus(payment.getStatus());
         response.setPaidAt(payment.getPaidAt());
         response.setErrorMessage(payment.getErrorMessage());
+        response.setQrText(payment.getQrText());
+        response.setMd5(payment.getMd5());
+        response.setExternalRef(payment.getExternalRef());
         response.setCreatedAt(payment.getCreatedAt());
         return response;
     }

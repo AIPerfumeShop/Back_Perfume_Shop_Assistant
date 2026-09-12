@@ -17,4 +17,6 @@ public class CheckoutResponse {
     private PaymentMethod paymentMethod;
     private PaymentStatus paymentStatus;
     private String transactionId;
+    private String qr;
+    private String md5;
 }

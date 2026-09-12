@@ -16,10 +16,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.brand.BrandFilterRequest;
 import com.example.spring_boot_project_api.dto.request.brand.BrandRequest;
+import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.brand.BrandResponse;
 import com.example.spring_boot_project_api.dto.response.brand.BrandStatisticsResponse;
+import com.example.spring_boot_project_api.dto.response.product.ProductResponse;
 import com.example.spring_boot_project_api.service.BrandService;
+import com.example.spring_boot_project_api.service.ProductService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -33,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class BrandController {
     private final BrandService brandService;
+    private final ProductService productService;
 
     @Operation(summary = "Create a new brand")
     @ApiResponses({
@@ -81,6 +85,18 @@ public class BrandController {
             @PathVariable Long id) {
         BrandStatisticsResponse response = brandService.getBrandStatistics(id);
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Get products by brand")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Products retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Brand not found")
+    })
+    @GetMapping("/{id}/products")
+    public ResponseEntity<PagedResponse<ProductResponse>> getProductsByBrand(
+            @PathVariable Long id,
+            @ModelAttribute ProductFilterRequest filter) {
+        return ResponseEntity.ok(productService.getProductsByBrand(id, filter));
     }
 
     @Operation(summary = "Update an existing brand")
