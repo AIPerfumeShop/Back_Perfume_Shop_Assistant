@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.example.spring_boot_project_api.dto.request.category.CreateCategoryRequest;
 import com.example.spring_boot_project_api.dto.request.category.UpdateCategoryRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.category.CategoryResponse;
 
 public interface CategoryService {
@@ -19,4 +20,6 @@ public interface CategoryService {
     CategoryResponse updateCategory(Long id, UpdateCategoryRequest request);
     //Soft Delete a category
     void deactivateCategory(Long id);
+    //Search active categories with pagination
+    PagedResponse<CategoryResponse> searchCategories(String search, int page, int size);
 }

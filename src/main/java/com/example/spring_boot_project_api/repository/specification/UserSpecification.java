@@ -4,15 +4,15 @@ import jakarta.persistence.criteria.Predicate;
 
 import org.springframework.data.jpa.domain.Specification;
 
-import com.example.spring_boot_project_api.dto.request.customer.CustomerFilterRequest;
+import com.example.spring_boot_project_api.dto.request.user.UserFilterRequest;
 import com.example.spring_boot_project_api.model.User;
 
-public class CustomerSpecification {
+public class UserSpecification {
 
-    private CustomerSpecification() {
+    private UserSpecification() {
     }
 
-    public static Specification<User> fromFilter(CustomerFilterRequest filter) {
+    public static Specification<User> fromFilter(UserFilterRequest filter) {
         return (root, query, cb) -> {
             Predicate predicate = cb.conjunction();
 

@@ -1,4 +1,4 @@
-package com.example.spring_boot_project_api.dto.request.customer;
+package com.example.spring_boot_project_api.dto.request.user;
 
 import java.util.Set;
 
@@ -12,7 +12,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class CustomerFilterRequest {
+public class UserFilterRequest {
     private static final int DEFAULT_PAGE = 0;
     private static final int DEFAULT_SIZE = 20;
     private static final String DEFAULT_SORT = "id";

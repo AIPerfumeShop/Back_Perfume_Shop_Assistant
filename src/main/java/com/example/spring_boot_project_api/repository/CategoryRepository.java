@@ -1,5 +1,7 @@
 package com.example.spring_boot_project_api.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -11,4 +13,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     boolean existsByNameIgnoreCase(String name);
     // Check duplicate name when updating a category
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+    // Paginated listing of active categories
+    Page<Category> findByIsActiveTrue(Pageable pageable);
+    // Paginated search over active categories
+    Page<Category> findByIsActiveTrueAndNameContainingIgnoreCase(String search, Pageable pageable);
 }
