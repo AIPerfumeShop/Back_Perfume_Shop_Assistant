@@ -108,7 +108,7 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.name").value("Updated Flow"))
                 .andExpect(jsonPath("$.phone").value("0990000000"));
 
-        mockMvc.perform(get("/api/customers")
+        mockMvc.perform(get("/api/users")
                         .header("Authorization", "Bearer " + jwt))
                 .andExpect(status().isForbidden());
 

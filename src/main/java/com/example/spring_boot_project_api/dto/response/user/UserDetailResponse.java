@@ -1,4 +1,4 @@
-package com.example.spring_boot_project_api.dto.response.customer;
+package com.example.spring_boot_project_api.dto.response.user;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -12,7 +12,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class CustomerDetailResponse {
+public class UserDetailResponse {
     private Long id;
     private String name;
     private String email;

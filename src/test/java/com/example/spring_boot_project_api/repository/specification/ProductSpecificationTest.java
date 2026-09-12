@@ -38,7 +38,11 @@ class ProductSpecificationTest {
         Root<Product> root = mock(Root.class);
         when(root.get("name")).thenReturn(namePath);
         when(root.get("description")).thenReturn(descPath);
+        when(root.get("isActive")).thenReturn(mock(Path.class));
         when(cb.conjunction()).thenReturn(conjunction);
+        when(cb.isTrue(any(Path.class))).thenReturn(mock(Predicate.class));
+        when(cb.isFalse(any(Path.class))).thenReturn(mock(Predicate.class));
+        when(cb.and(any(Predicate.class), any(Predicate.class))).thenReturn(mock(Predicate.class));
         return root;
     }
 
@@ -54,6 +58,33 @@ class ProductSpecificationTest {
 
         assertNotNull(predicate);
         verify(query).distinct(true);
+    }
+
+    @Test
+    void fromFilter_default_excludesSoftDeletedProducts() {
+        Root<Product> root = root();
+        Path activePath = mock(Path.class);
+        Predicate activePred = mock(Predicate.class);
+        when(root.get("isActive")).thenReturn(activePath);
+        when(cb.isTrue(activePath)).thenReturn(activePred);
+
+        assertNotNull(run(ProductSpecification.fromFilter(new ProductFilterRequest()), root));
+        verify(cb).isTrue(activePath);
+    }
+
+    @Test
+    void fromFilter_isActiveFalse_selectsOnlyInactiveProducts() {
+        Root<Product> root = root();
+        Path activePath = mock(Path.class);
+        Predicate inactivePred = mock(Predicate.class);
+        when(root.get("isActive")).thenReturn(activePath);
+        when(cb.isFalse(activePath)).thenReturn(inactivePred);
+
+        ProductFilterRequest filter = new ProductFilterRequest();
+        filter.setIsActive(false);
+
+        assertNotNull(run(ProductSpecification.fromFilter(filter), root));
+        verify(cb).isFalse(activePath);
     }
 
     @Test

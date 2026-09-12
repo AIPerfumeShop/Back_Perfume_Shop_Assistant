@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.category.CreateCategoryRequest;
 import com.example.spring_boot_project_api.dto.request.category.UpdateCategoryRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.category.CategoryResponse;
 import com.example.spring_boot_project_api.service.CategoryService;
 
@@ -56,6 +58,19 @@ public class CategoryController {
     public ResponseEntity<List<CategoryResponse>> getAllCategories() {
         List<CategoryResponse> response = categoryService.getAllCategories();
         return ResponseEntity.ok(response);
+    }
+
+    //Search categories with pagination
+    @Operation(summary = "Search active categories with pagination")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Categories retrieved successfully")
+    })
+    @GetMapping("/search")
+    public ResponseEntity<PagedResponse<CategoryResponse>> searchCategories(
+        @RequestParam(required = false) String search,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(categoryService.searchCategories(search, page, size));
     }
 
     //Get Category By Id

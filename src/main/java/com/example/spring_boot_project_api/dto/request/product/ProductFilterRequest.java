@@ -35,6 +35,8 @@ public class ProductFilterRequest {
     private BigDecimal minPrice;
     private Integer minRate;
     private Boolean inStock;
+    //null (default) or true -> only active products; false -> only inactive products
+    private Boolean isActive;
 
     private Integer page;
     private Integer size;

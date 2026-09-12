@@ -288,17 +288,17 @@ class ProductSearchAndBrandIntegrationTest {
 
     @Test
     void adminEndpoints_requireAdminRole() throws Exception {
-        mockMvc.perform(get("/api/customers"))
+        mockMvc.perform(get("/api/users"))
                 .andExpect(status().isUnauthorized());
 
         String customerJwt = userRepository.findByEmail("reviewer@it.test")
                 .map(u -> tokenProvider.generateToken(u))
                 .orElseThrow();
-        mockMvc.perform(get("/api/customers")
+        mockMvc.perform(get("/api/users")
                         .header("Authorization", "Bearer " + customerJwt))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(get("/api/customers")
+        mockMvc.perform(get("/api/users")
                         .header("Authorization", "Bearer " + adminJwt()))
                 .andExpect(status().isOk());
     }

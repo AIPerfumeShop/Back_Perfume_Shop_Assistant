@@ -15,6 +15,8 @@ import com.example.spring_boot_project_api.model.Brand;
 public interface BrandRepository extends JpaRepository<Brand, Long>, JpaSpecificationExecutor<Brand> {
     // Check whether a brand name already exists 
     boolean existsByNameIgnoreCase(String name); 
+    // Find a brand by name (case-insensitive)
+    java.util.Optional<Brand> findByNameIgnoreCase(String name); 
     // Check duplicate name when updating a brand 
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
 

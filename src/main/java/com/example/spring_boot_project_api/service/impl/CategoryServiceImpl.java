@@ -2,11 +2,16 @@ package com.example.spring_boot_project_api.service.impl;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.category.CreateCategoryRequest;
 import com.example.spring_boot_project_api.dto.request.category.UpdateCategoryRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.category.CategoryResponse;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
@@ -114,5 +119,30 @@ public class CategoryServiceImpl implements CategoryService {
 
         //Save Change
         categoryRepository.save(category);
+    }
+
+    //Search active categories with pagination
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<CategoryResponse> searchCategories(String search, int page, int size) {
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                size > 0 ? Math.min(size, 50) : 20,
+                Sort.by(Sort.Direction.ASC, "name"));
+
+        Page<Category> categories = (search == null || search.isBlank())
+                ? categoryRepository.findByIsActiveTrue(pageable)
+                : categoryRepository.findByIsActiveTrueAndNameContainingIgnoreCase(search.trim(), pageable);
+
+        List<CategoryResponse> content = categories.getContent().stream()
+                .map(categoryMapper::toResponse)
+                .toList();
+
+        return new PagedResponse<>(
+                content,
+                categories.getTotalElements(),
+                categories.getTotalPages(),
+                categories.getNumber(),
+                categories.getSize());
     }
 }
