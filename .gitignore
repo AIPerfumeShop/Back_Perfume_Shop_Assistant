@@ -31,3 +31,7 @@ build/
 !**/src/test/**/build/
 ### VS Code ###
 .vscode/
+
+### Java crash logs ###
+hs_err_pid*.log
+replay_pid*.log

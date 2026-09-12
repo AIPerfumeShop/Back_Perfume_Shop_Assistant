@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -183,5 +184,196 @@ class PaymentServiceImplTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> paymentService.getPaymentByTransactionId("nope"));
+    }
+
+    @Test
+    void getPaymentByTransactionId_blank_throwsBadRequest() {
+        assertThrows(BadRequestException.class,
+                () -> paymentService.getPaymentByTransactionId("  "));
+    }
+
+    @Test
+    void getPayment_notFound_throws() {
+        when(paymentRepository.findById(404L)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> paymentService.getPayment(404L));
+    }
+
+    @Test
+    void processPayment_alreadySuccessful_throwsBadRequest() {
+        Payment payment = newPayment(newOrder(), PaymentStatus.SUCCESSFUL);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        assertThrows(BadRequestException.class,
+                () -> paymentService.processPayment(1L));
+    }
+
+    @Test
+    void processPayment_alreadyRefunded_throwsBadRequest() {
+        Payment payment = newPayment(newOrder(), PaymentStatus.REFUNDED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        assertThrows(BadRequestException.class,
+                () -> paymentService.processPayment(1L));
+    }
+
+    @Test
+    void validatePayment_refunded_throwsBadRequest() {
+        Payment payment = newPayment(newOrder(), PaymentStatus.REFUNDED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        assertThrows(BadRequestException.class,
+                () -> paymentService.validatePayment(1L));
+    }
+
+    @Test
+    void validatePayment_missingOrder_throwsBadRequest() {
+        Payment payment = new Payment();
+        payment.setId(1L);
+        payment.setPaymentMethod(PaymentMethod.ABA);
+        payment.setAmount(new BigDecimal("50.00"));
+        payment.setStatus(PaymentStatus.PENDING);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThrows(BadRequestException.class,
+                () -> paymentService.validatePayment(1L));
+        assertEquals("Payment is not linked to an order", payment.getErrorMessage());
+    }
+
+    @Test
+    void initPayment_returnsPendingPaymentWithTransaction() {
+        Order order = newOrder();
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Payment payment = paymentService.initPayment(order, "CASH");
+
+        assertNotNull(payment);
+        assertEquals(order, payment.getOrder());
+        assertEquals(PaymentMethod.CASH, payment.getPaymentMethod());
+        assertEquals(order.getTotalAmount(), payment.getAmount());
+        assertEquals(PaymentStatus.PENDING, payment.getStatus());
+        assertNotNull(payment.getTransactionId());
+    }
+
+    @Test
+    void getPaymentHistoryByOrder_delegatesToMapper() {
+        when(paymentRepository.findAllByOrderIdOrderByCreatedAtDesc(10L))
+                .thenReturn(List.of(newPayment(newOrder(), PaymentStatus.SUCCESSFUL)));
+
+        PaymentResponse mapped = new PaymentResponse();
+        mapped.setId(1L);
+        mapped.setOrderId(10L);
+        mapped.setStatus(PaymentStatus.SUCCESSFUL);
+        when(paymentMapper.toResponseList(any()))
+                .thenReturn(List.of(mapped));
+
+        List<PaymentResponse> responses = paymentService.getPaymentHistoryByOrder(10L);
+
+        assertEquals(1, responses.size());
+        assertEquals(10L, responses.get(0).getOrderId());
+    }
+
+    @Test
+    void getPaymentHistoryByOrder_emptyList() {
+        when(paymentRepository.findAllByOrderIdOrderByCreatedAtDesc(10L))
+                .thenReturn(List.of());
+        when(paymentMapper.toResponseList(any())).thenReturn(List.of());
+
+        List<PaymentResponse> responses = paymentService.getPaymentHistoryByOrder(10L);
+
+        assertTrue(responses.isEmpty());
+    }
+
+    @Test
+    void getPaymentHistoryByUser_delegatesToRepository() {
+        when(paymentRepository.findAllByOrderUserIdOrderByCreatedAtDesc(10L))
+                .thenReturn(List.of(newPayment(newOrder(), PaymentStatus.SUCCESSFUL)));
+
+        PaymentResponse mapped = new PaymentResponse();
+        mapped.setId(1L);
+        mapped.setOrderId(10L);
+        mapped.setStatus(PaymentStatus.SUCCESSFUL);
+        when(paymentMapper.toResponseList(any()))
+                .thenReturn(List.of(mapped));
+
+        List<PaymentResponse> responses = paymentService.getPaymentHistoryByUser(10L);
+
+        assertEquals(1, responses.size());
+        assertEquals(10L, responses.get(0).getOrderId());
+    }
+
+    @Test
+    void getPaymentHistoryByUser_emptyList() {
+        when(paymentRepository.findAllByOrderUserIdOrderByCreatedAtDesc(10L))
+                .thenReturn(List.of());
+        when(paymentMapper.toResponseList(any())).thenReturn(List.of());
+
+        List<PaymentResponse> responses = paymentService.getPaymentHistoryByUser(10L);
+
+        assertTrue(responses.isEmpty());
+    }
+
+    @Test
+    void getPaymentStatus_delegatesToGetPayment() {
+        Order order = newOrder();
+        Payment payment = newPayment(order, PaymentStatus.SUCCESSFUL);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentMapper.toResponse(payment)).thenAnswer(inv -> {
+            PaymentResponse r = new PaymentResponse();
+            r.setId(payment.getId());
+            r.setStatus(payment.getStatus());
+            return r;
+        });
+
+        PaymentResponse response = paymentService.getPaymentStatus(1L);
+
+        assertNotNull(response);
+        assertEquals(PaymentStatus.SUCCESSFUL, response.getStatus());
+    }
+
+    @Test
+    void validatePayment_notFound_throws() {
+        when(paymentRepository.findById(404L)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> paymentService.validatePayment(404L));
+    }
+
+    @Test
+    void processPayment_notFound_throws() {
+        when(paymentRepository.findById(404L)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> paymentService.processPayment(404L));
+    }
+
+    @Test
+    void createPayment_cashMethod_succeeds() {
+        Order order = newOrder();
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentMapper.toResponse(any(Payment.class)))
+                .thenAnswer(inv -> {
+                    Payment p = inv.getArgument(0);
+                    PaymentResponse r = new PaymentResponse();
+                    r.setId(p.getId());
+                    r.setOrderId(p.getOrder().getId());
+                    r.setPaymentMethod(p.getPaymentMethod());
+                    r.setStatus(p.getStatus());
+                    r.setTransactionId(p.getTransactionId());
+                    r.setAmount(p.getAmount());
+                    return r;
+                });
+
+        PaymentRequest request = new PaymentRequest();
+        request.setOrderId(10L);
+        request.setPaymentMethod("CASH");
+
+        PaymentResponse response = paymentService.createPayment(request);
+
+        assertEquals(PaymentMethod.CASH, response.getPaymentMethod());
+        assertEquals(PaymentStatus.PENDING, response.getStatus());
     }
 }
