@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.math.BigDecimal;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +37,7 @@ import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.EmailService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -68,6 +71,8 @@ class OrderIntegrationTest {
 
     @MockitoBean
     private EmailService emailService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private Long variantId;
     private User customer;
@@ -180,6 +185,65 @@ class OrderIntegrationTest {
                 .andExpect(jsonPath("$.paymentMethod").value("CASH"))
                 .andExpect(jsonPath("$.paymentStatus").value("SUCCESSFUL"))
                 .andExpect(jsonPath("$.totalAmount").value(100.0));
+    }
+
+    @Test
+    void checkout_duplicateWithinWindow_returnsSameOrderAndPayment() throws Exception {
+        String payload = orderPayload(2).replace("}", ",\"paymentMethod\":\"CASH\"}");
+
+        String first = mockMvc.perform(post("/api/orders/checkout")
+                        .header("Authorization", bearer(customer))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.paymentStatus").value("SUCCESSFUL"))
+                .andReturn().getResponse().getContentAsString();
+
+        long firstOrderId = objectMapper.readTree(first).get("orderId").asLong();
+        long firstPaymentId = objectMapper.readTree(first).get("paymentId").asLong();
+
+        //Identical checkout double-tapped: must reuse the existing order+payment
+        //instead of creating a duplicate order and charging twice.
+        String second = mockMvc.perform(post("/api/orders/checkout")
+                        .header("Authorization", bearer(customer))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.paymentStatus").value("SUCCESSFUL"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertEquals(firstOrderId, objectMapper.readTree(second).get("orderId").asLong());
+        assertEquals(firstPaymentId, objectMapper.readTree(second).get("paymentId").asLong());
+        assertEquals(1, orderRepository.count());
+    }
+
+    @Test
+    void checkout_paymentProcess_isIdempotent() throws Exception {
+        String payload = orderPayload(2).replace("}", ",\"paymentMethod\":\"CASH\"}");
+
+        String created = mockMvc.perform(post("/api/orders/checkout")
+                        .header("Authorization", bearer(customer))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        long paymentId = objectMapper.readTree(created).get("paymentId").asLong();
+        User admin = user(Role.ADMIN, "order-admin@customer.test");
+
+        //First process call succeeds.
+        mockMvc.perform(post("/api/payments/" + paymentId + "/process")
+                        .header("Authorization", bearer(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").value(true));
+
+        //Second (double-tap) call returns the same outcome without re-processing.
+        mockMvc.perform(post("/api/payments/" + paymentId + "/process")
+                        .header("Authorization", bearer(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").value(true));
+
+        assert productVariantRepository.findById(variantId).orElseThrow().getStock() == 3;
     }
 
     @Test

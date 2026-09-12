@@ -19,6 +19,7 @@ import com.example.spring_boot_project_api.dto.request.cs.HandoffRequest;
 import com.example.spring_boot_project_api.dto.request.cs.SupportMessageRequest;
 import com.example.spring_boot_project_api.dto.request.cs.UpdateTicketPriorityRequest;
 import com.example.spring_boot_project_api.dto.request.cs.UpdateTicketStatusRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
 import com.example.spring_boot_project_api.dto.response.cs.CsChatResponse;
 import com.example.spring_boot_project_api.dto.response.cs.SupportAnalyticsResponse;
@@ -27,7 +28,9 @@ import com.example.spring_boot_project_api.dto.response.cs.SupportTicketDetailRe
 import com.example.spring_boot_project_api.dto.response.cs.SupportTicketNoteResponse;
 import com.example.spring_boot_project_api.dto.response.cs.SupportTicketResponse;
 import com.example.spring_boot_project_api.enums.TicketStatus;
+import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.CustomerCareService;
+import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -50,8 +53,9 @@ public class CustomerCareController {
     })
     @PostMapping("/chat")
     public ResponseEntity<CsChatResponse> chat(
-            @RequestParam Long userId,
             @Valid @RequestBody CsChatRequest request) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() -> new UnauthorizedException("Authentication required"));
         return ResponseEntity.ok(customerCareService.chat(userId, request));
     }
 
@@ -62,8 +66,9 @@ public class CustomerCareController {
     })
     @PostMapping("/handoff")
     public ResponseEntity<SupportTicketResponse> handoff(
-            @RequestParam Long userId,
             @Valid @RequestBody HandoffRequest request) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() -> new UnauthorizedException("Authentication required"));
         return ResponseEntity.ok(customerCareService.handoff(userId, request));
     }
 
@@ -73,9 +78,12 @@ public class CustomerCareController {
         @ApiResponse(responseCode = "200", description = "Tickets retrieved successfully")
     })
     @GetMapping("/tickets")
-    public ResponseEntity<List<SupportTicketResponse>> getCustomerTickets(
-            @RequestParam Long userId) {
-        return ResponseEntity.ok(customerCareService.getCustomerTickets(userId));
+    public ResponseEntity<PagedResponse<SupportTicketResponse>> getCustomerTickets(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() -> new UnauthorizedException("Authentication required"));
+        return ResponseEntity.ok(customerCareService.getCustomerTickets(userId, page, size));
     }
 
     //Customer view of one ticket
@@ -85,8 +93,9 @@ public class CustomerCareController {
     })
     @GetMapping("/tickets/{ticketId}")
     public ResponseEntity<SupportTicketDetailResponse> getCustomerTicket(
-            @RequestParam Long userId,
             @PathVariable Long ticketId) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() -> new UnauthorizedException("Authentication required"));
         return ResponseEntity.ok(customerCareService.getCustomerTicket(userId, ticketId));
     }
 
@@ -97,9 +106,10 @@ public class CustomerCareController {
     })
     @PostMapping("/tickets/{ticketId}/messages")
     public ResponseEntity<AIMessageResponse> replyAsCustomer(
-            @RequestParam Long userId,
             @PathVariable Long ticketId,
             @Valid @RequestBody SupportMessageRequest request) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() -> new UnauthorizedException("Authentication required"));
         return ResponseEntity.ok(
                 customerCareService.replyAsCustomer(userId, ticketId, request.getMessage()));
     }

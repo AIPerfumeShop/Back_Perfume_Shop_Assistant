@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.example.spring_boot_project_api.dto.request.cs.CsChatRequest;
 import com.example.spring_boot_project_api.dto.request.cs.HandoffRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
 import com.example.spring_boot_project_api.dto.response.cs.CsChatResponse;
 import com.example.spring_boot_project_api.dto.response.cs.SupportAnalyticsResponse;
@@ -23,7 +24,7 @@ public interface CustomerCareService {
     SupportTicketResponse handoff(Long userId, HandoffRequest request);
 
     //Customer's own tickets
-    List<SupportTicketResponse> getCustomerTickets(Long userId);
+    PagedResponse<SupportTicketResponse> getCustomerTickets(Long userId, int page, int size);
 
     //Customer view of one ticket (thread, no internal notes)
     SupportTicketDetailResponse getCustomerTicket(Long userId, Long ticketId);

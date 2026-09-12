@@ -129,7 +129,7 @@ class AuthServiceImplTest {
         verify(passwordResetTokenRepository).save(tokenCaptor.capture());
         ArgumentCaptor<String> otpCaptor = ArgumentCaptor.forClass(String.class);
         verify(emailService).sendOtp(eq("test@example.com"), otpCaptor.capture(), eq(OtpPurpose.REGISTRATION));
-        assertTrue(otpCaptor.getValue().matches("\\d{6}"));
+        assertTrue(otpCaptor.getValue().matches("\\d{8}"));
         assertEquals(sha256Hex(otpCaptor.getValue()), tokenCaptor.getValue().getOtpHash());
         assertTrue(tokenCaptor.getValue().getExpiresAt().isAfter(LocalDateTime.now()));
     }
@@ -328,7 +328,7 @@ class AuthServiceImplTest {
         PasswordResetToken saved = tokenCaptor.getValue();
         assertEquals(sha256Hex(otpCaptor.getValue()), saved.getOtpHash());
         assertEquals(1L, saved.getUserId());
-        assertTrue(otpCaptor.getValue().matches("\\d{6}"));
+        assertTrue(otpCaptor.getValue().matches("\\d{8}"));
         assertTrue(saved.getExpiresAt().isAfter(LocalDateTime.now()));
     }
 

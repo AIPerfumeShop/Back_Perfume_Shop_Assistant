@@ -19,6 +19,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.example.spring_boot_project_api.config.BakongProperties;
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
 import com.example.spring_boot_project_api.dto.response.bakong.BakongResponse;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
@@ -54,6 +55,12 @@ class PaymentServiceImplTest {
 
     @Mock
     private BakongService bakongService;
+
+    @Mock
+    private TelegramService telegramService;
+
+    @Mock
+    private BakongProperties bakongProperties;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -165,7 +172,8 @@ class PaymentServiceImplTest {
         Order order = newOrder();
         Payment payment = newPayment(order, PaymentStatus.PENDING);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentRepository.transitionFromPending(
+                any(), any(), any(), any())).thenReturn(1);
 
         boolean success = paymentService.processPayment(1L);
 
@@ -179,13 +187,42 @@ class PaymentServiceImplTest {
         Payment payment = newPayment(newOrder(), PaymentStatus.PENDING);
         payment.setAmount(null);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentRepository.transitionFromPending(
+                any(), any(), any(), any())).thenReturn(1);
 
         boolean success = paymentService.processPayment(1L);
 
         assertFalse(success);
         assertEquals(PaymentStatus.FAILED, payment.getStatus());
         assertNull(payment.getPaidAt());
+    }
+
+    @Test
+    void processPayment_alreadySuccessful_isIdempotent() {
+        Order order = newOrder();
+        Payment payment = newPayment(order, PaymentStatus.SUCCESSFUL);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        boolean success = paymentService.processPayment(1L);
+
+        assertTrue(success);
+    }
+
+    @Test
+    void processPayment_concurrentRace_returnsCurrentOutcome() {
+        Order order = newOrder();
+        Payment payment = newPayment(order, PaymentStatus.PENDING);
+        Payment alreadySuccessful = newPayment(order, PaymentStatus.SUCCESSFUL);
+        when(paymentRepository.findById(1L))
+                .thenReturn(Optional.of(payment))
+                .thenReturn(Optional.of(alreadySuccessful));
+        // First request loses the race: 0 rows updated by its transition.
+        when(paymentRepository.transitionFromPending(
+                any(), any(), any(), any())).thenReturn(0);
+
+        boolean success = paymentService.processPayment(1L);
+
+        assertTrue(success);
     }
 
     @Test
@@ -210,6 +247,12 @@ class PaymentServiceImplTest {
 
         when(bakongService.generateQR(any()))
                 .thenReturn(qrResponse);
+        when(bakongProperties.getMerchantName()).thenReturn("John Smith");
+        when(bakongProperties.getMerchantCity()).thenReturn("PHNOM PENH");
+        when(bakongProperties.getMerchantId()).thenReturn("123456");
+        when(bakongProperties.getAcquiringBank()).thenReturn("Dev Bank");
+        when(bakongProperties.getStoreLabel()).thenReturn("AI Perfume Shop");
+        when(bakongProperties.getTerminalLabel()).thenReturn("TERMINAL1");
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Payment payment = paymentService.initBakongPayment(order);

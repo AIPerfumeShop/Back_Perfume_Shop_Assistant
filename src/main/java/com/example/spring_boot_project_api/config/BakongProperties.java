@@ -12,6 +12,13 @@ public class BakongProperties {
     private String accountId;
     private String baseUrl;
     private String email;
+    private String merchantName;
+    private String merchantCity;
+    private String merchantId;
+    private String acquiringBank;
+    private String mobileNumber;
+    private String storeLabel;
+    private String terminalLabel;
 
     public boolean isConfigured() {
         return accountId != null && !accountId.isBlank()

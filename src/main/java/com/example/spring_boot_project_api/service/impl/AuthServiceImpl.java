@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.util.HexFormat;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ import com.example.spring_boot_project_api.enums.Role;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ConflictException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
+import com.example.spring_boot_project_api.exception.TooManyRequestsException;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.mapper.UserMapper;
 import com.example.spring_boot_project_api.model.PasswordResetToken;
@@ -43,13 +45,20 @@ public class AuthServiceImpl implements AuthService {
 
     private static final String BCRYPT_PREFIX = "$2";
     private static final int OTP_TTL_MINUTES = 10;
-    private static final int OTP_LENGTH = 6;
+    private static final int OTP_LENGTH = 8;
+    private static final String OTP_ERROR = "Invalid or expired verification code";
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final JwtTokenProvider tokenProvider;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+
+    @Value("${app.otp.max-attempts:5}")
+    private int otpMaxAttempts = 5;
+
+    @Value("${app.otp.lockout-minutes:15}")
+    private int otpLockoutMinutes = 15;
 
     public AuthServiceImpl(UserRepository userRepository,
                            PasswordResetTokenRepository passwordResetTokenRepository,
@@ -177,10 +186,11 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
     public void verifyOtp(VerifyOtpRequest request) {
         String email = request.email().trim().toLowerCase();
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BadRequestException("Invalid or expired verification code"));
+                .orElseThrow(() -> new BadRequestException(OTP_ERROR));
         validateOtp(user.getId(), request.otp());
     }
 
@@ -269,14 +279,24 @@ public class AuthServiceImpl implements AuthService {
 
     private PasswordResetToken validateOtp(Long userId, String rawOtp) {
         PasswordResetToken token = passwordResetTokenRepository.findByUserId(userId)
-                .orElseThrow(() -> new BadRequestException("Invalid or expired verification code"));
-        if (token.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new BadRequestException("Invalid or expired verification code");
+                .orElseThrow(() -> new BadRequestException(OTP_ERROR));
+        LocalDateTime now = LocalDateTime.now();
+        if (token.getExpiresAt().isBefore(now)) {
+            throw new BadRequestException(OTP_ERROR);
+        }
+        if (token.getLockedUntil() != null && token.getLockedUntil().isAfter(now)) {
+            throw new TooManyRequestsException("Too many attempts. The verification code is temporarily locked. Please try again later.");
         }
         if (!MessageDigest.isEqual(
                 sha256Hex(rawOtp.trim()).getBytes(StandardCharsets.UTF_8),
                 token.getOtpHash().getBytes(StandardCharsets.UTF_8))) {
-            throw new BadRequestException("Invalid or expired verification code");
+            int attempts = token.getAttemptCount() + 1;
+            token.setAttemptCount(attempts);
+            if (attempts >= otpMaxAttempts) {
+                token.setLockedUntil(now.plusMinutes(otpLockoutMinutes));
+            }
+            passwordResetTokenRepository.save(token);
+            throw new BadRequestException(OTP_ERROR);
         }
         return token;
     }

@@ -6,14 +6,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationClickRequest;
 import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationRequest;
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationClickResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationResponse;
+import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.AIRecommendationService;
+import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -30,15 +31,19 @@ public class AIRecommendationController {
         this.recommendationService = recommendationService;
     }
 
+    private Long currentUserId() {
+        return SecurityUtils.currentUserId()
+                .orElseThrow(() -> new UnauthorizedException("Authentication required"));
+    }
+
     @Operation(summary = "Get AI product recommendations")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Recommendations retrieved successfully")
     })
     @PostMapping
     public ResponseEntity<List<AIRecommendationResponse>> recommend(
-            @RequestParam Long userId,
             @Valid @RequestBody AIRecommendationRequest request) {
-        return ResponseEntity.ok(recommendationService.recommend(userId, request));
+        return ResponseEntity.ok(recommendationService.recommend(currentUserId(), request));
     }
 
     @Operation(summary = "Track a click on an AI recommendation")
@@ -47,8 +52,7 @@ public class AIRecommendationController {
     })
     @PostMapping("/click")
     public ResponseEntity<AIRecommendationClickResponse> trackClick(
-            @RequestParam Long userId,
             @Valid @RequestBody AIRecommendationClickRequest request) {
-        return ResponseEntity.ok(recommendationService.trackClick(userId, request));
+        return ResponseEntity.ok(recommendationService.trackClick(currentUserId(), request));
     }
 }

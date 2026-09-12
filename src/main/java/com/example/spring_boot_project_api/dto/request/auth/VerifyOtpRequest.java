@@ -8,5 +8,5 @@ public record VerifyOtpRequest(
         @NotBlank(message = "Email is required")
         @Email(message = "Email must be valid") String email,
         @NotBlank(message = "Verification code is required")
-        @Pattern(regexp = "\\d{6}", message = "Verification code must be 6 digits") String otp) {
+        @Pattern(regexp = "\\d{8}", message = "Verification code must be 8 digits") String otp) {
 }

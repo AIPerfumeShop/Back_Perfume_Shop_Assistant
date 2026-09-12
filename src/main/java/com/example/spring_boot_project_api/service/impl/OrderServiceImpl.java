@@ -8,7 +8,10 @@ import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.service.PaymentService;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -28,6 +31,7 @@ import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.OrderRepository;
+import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.repository.specification.OrderSpecification;
@@ -36,9 +40,14 @@ import com.example.spring_boot_project_api.service.OrderService;
 @Service
 @Transactional
 public class OrderServiceImpl implements OrderService {
+    //Window (seconds) within which an identical checkout from the same user
+    //is considered a duplicate and returns the existing order.
+    private static final long DUPLICATE_GUARD_WINDOW_SECONDS = 30;
+
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final PaymentRepository paymentRepository;
     private final OrderMapper orderMapper;
     private final PaymentService paymentService;
 
@@ -46,11 +55,13 @@ public class OrderServiceImpl implements OrderService {
             OrderRepository orderRepository,
             UserRepository userRepository,
             ProductVariantRepository productVariantRepository,
+            PaymentRepository paymentRepository,
             OrderMapper orderMapper,
             PaymentService paymentService) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.productVariantRepository = productVariantRepository;
+        this.paymentRepository = paymentRepository;
         this.orderMapper = orderMapper;
         this.paymentService = paymentService;
     }
@@ -210,6 +221,18 @@ public class OrderServiceImpl implements OrderService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        //Idempotency guard: if the same user just placed an identical
+        //checkout, return the existing pending order instead of creating
+        //a duplicate order + payment (double-tap protection).
+        Order recent = findRecentDuplicate(userId, request);
+        if (recent != null) {
+            Payment payment = paymentRepository.findByOrderId(recent.getId())
+                    .orElse(null);
+            if (payment != null) {
+                return toCheckoutResponse(payment, recent);
+            }
+        }
+
         Order order = new Order();
         order.setUser(user);
         order.setShippingAddress(request.getShippingAddress());
@@ -263,6 +286,61 @@ public class OrderServiceImpl implements OrderService {
         response.setQr(payment.getQrText());
         response.setMd5(payment.getMd5());
         return response;
+    }
+
+    //Find a recent pending order for the same user with the same shipping
+    //details and items, within the duplicate-guard window.
+    private Order findRecentDuplicate(Long userId, CheckoutRequest request) {
+        LocalDateTime cutoff = LocalDateTime.now()
+                .minusSeconds(DUPLICATE_GUARD_WINDOW_SECONDS);
+
+        List<Order> recent = orderRepository
+                .findTop10ByUserIdAndCreatedAtAfterAndStatusNotOrderByCreatedAtDesc(
+                        userId, cutoff, OrderStatus.CANCELLED);
+
+        for (Order candidate : recent) {
+            if (candidate.getStatus() == OrderStatus.CANCELLED) {
+                continue;
+            }
+            if (!sameShipping(request, candidate)) {
+                continue;
+            }
+            if (sameItems(request, candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private boolean sameShipping(CheckoutRequest request, Order candidate) {
+        return java.util.Objects.equals(
+                        request.getShippingAddress(), candidate.getShippingAddress())
+                && java.util.Objects.equals(request.getPhone(), candidate.getPhone());
+    }
+
+    private boolean sameItems(CheckoutRequest request, Order candidate) {
+        List<OrderItem> existingItems = candidate.getItems();
+        if (existingItems == null
+                || existingItems.size() != request.getItems().size()) {
+            return false;
+        }
+
+        Map<Long, Integer> orderedQuantities = new HashMap<>();
+        for (OrderItem item : existingItems) {
+            Long variantId = item.getVariant() != null
+                    ? item.getVariant().getId()
+                    : null;
+            orderedQuantities.put(variantId,
+                    item.getQuantity());
+        }
+
+        for (OrderItemRequest itemRequest : request.getItems()) {
+            Integer quantity = orderedQuantities.get(itemRequest.getVariantId());
+            if (quantity == null || quantity.intValue() != itemRequest.getQuantity()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean isKHQR(String paymentMethod) {

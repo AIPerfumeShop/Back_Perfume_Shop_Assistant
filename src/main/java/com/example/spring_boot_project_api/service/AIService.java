@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
@@ -13,8 +14,8 @@ public interface AIService {
     AIChatResponse chat(Long userId, AIChatRequest request);
     //send a message and stream the AI response token by token
     AIChatResponse streamChat(Long userId, AIChatRequest request, Consumer<String> onToken);
-    //Get all conversation belonging to a user
-    List<AIConversationResponse> getUserConversations(Long userId);
+    //Get a page of conversations belonging to a user (newest first)
+    PagedResponse<AIConversationResponse> getUserConversations(Long userId, int page, int size);
 
     //Get all messages belonging to a conversation
     List<AIMessageResponse> getConversationMessages(Long userId,Long conversationId);

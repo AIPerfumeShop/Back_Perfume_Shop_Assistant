@@ -64,6 +64,19 @@ public class GlobalExceptionHandler {
                 .body(error);
     }
 
+    //Too Many Requests 429
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException ex){
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.TOO_MANY_REQUESTS.value(),
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(error);
+    }
+
     //Conflict 409
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex){

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
+import com.example.spring_boot_project_api.config.BakongProperties;
 import com.example.spring_boot_project_api.dto.request.bakong.CheckTransactionRequest;
 import com.example.spring_boot_project_api.dto.request.bakong.BakongRequest;
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
@@ -28,6 +29,7 @@ import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.service.BakongService;
 import com.example.spring_boot_project_api.service.PaymentService;
+import com.example.spring_boot_project_api.service.TelegramService;
 
 import kh.gov.nbc.bakong_khqr.model.KHQRData;
 import kh.gov.nbc.bakong_khqr.model.KHQRResponse;
@@ -40,15 +42,21 @@ public class PaymentServiceImpl implements PaymentService {
     private final OrderRepository orderRepository;
     private final PaymentMapper paymentMapper;
     private final BakongService bakongService;
+    private final TelegramService telegramService;
+    private final BakongProperties bakongProperties;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               OrderRepository orderRepository,
                               PaymentMapper paymentMapper,
-                              BakongService bakongService) {
+                              BakongService bakongService,
+                              TelegramService telegramService,
+                              BakongProperties bakongProperties) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.paymentMapper = paymentMapper;
         this.bakongService = bakongService;
+        this.telegramService = telegramService;
+        this.bakongProperties = bakongProperties;
     }
 
     @Override
@@ -151,9 +159,12 @@ public class PaymentServiceImpl implements PaymentService {
     public boolean processPayment(Long paymentId) {
         Payment payment = findPayment(paymentId);
 
-        //Payment validation before processing
-        if (payment.getStatus() == PaymentStatus.SUCCESSFUL
-                || payment.getStatus() == PaymentStatus.REFUNDED) {
+        // Idempotent: a retry of an already-processed payment returns the same
+        // outcome without re-processing, so double-taps cannot double-charge.
+        if (payment.getStatus() == PaymentStatus.SUCCESSFUL) {
+            return true;
+        }
+        if (payment.getStatus() == PaymentStatus.REFUNDED) {
             throw new BadRequestException(
                     "Payment cannot be processed again");
         }
@@ -163,18 +174,43 @@ public class PaymentServiceImpl implements PaymentService {
                 && payment.getPaymentMethod() != null
                 && payment.getOrder() != null;
 
-        payment.setStatus(success
+        PaymentStatus target = success
                 ? PaymentStatus.SUCCESSFUL
-                : PaymentStatus.FAILED);
-        payment.setErrorMessage(success ? null : "Payment validation failed");
+                : PaymentStatus.FAILED;
+        LocalDateTime paidAt = success ? LocalDateTime.now() : null;
+        String errorMessage = success ? null : "Payment validation failed";
 
-        if (success) {
-            payment.setPaidAt(LocalDateTime.now());
+        // Only a PENDING payment may transition. If another request already
+        // processed it, the update matches 0 rows and we just report the
+        // current outcome instead of processing twice.
+        int updated = paymentRepository.transitionFromPending(
+                paymentId, target, errorMessage, paidAt);
+
+        if (updated == 1) {
+            // Keep the managed entity consistent for callers that read it
+            // immediately afterwards (e.g. checkout response mapping).
+            payment.setStatus(target);
+            payment.setPaidAt(paidAt);
+            payment.setErrorMessage(errorMessage);
+
+            if (success) {
+                telegramService.sendPaymentNotification(
+                        paymentMapper.toResponse(payment));
+            }
+            return success;
         }
 
-        paymentRepository.save(payment);
-
-        return success;
+        // A concurrent request already transitioned this payment: report the
+        // terminal outcome idempotently.
+        Payment current = findPayment(paymentId);
+        if (current.getStatus() == PaymentStatus.SUCCESSFUL) {
+            return true;
+        }
+        if (current.getStatus() == PaymentStatus.FAILED) {
+            return false;
+        }
+        throw new BadRequestException(
+                "Payment cannot be processed again");
     }
 
     @Override
@@ -190,9 +226,15 @@ public class PaymentServiceImpl implements PaymentService {
                 new BakongRequest(
                         null,
                         order.getTotalAmount().doubleValue(),
-                        null, null, null, null, null, null,
+                        bakongProperties.getMerchantName(),
+                        bakongProperties.getMerchantCity(),
+                        bakongProperties.getMerchantId(),
+                        bakongProperties.getAcquiringBank(),
+                        null, null,
                         String.valueOf(order.getId()),
-                        null, null, null, null, null, null, null));
+                        bakongProperties.getStoreLabel(),
+                        bakongProperties.getTerminalLabel(),
+                        null, null, null, null, null));
 
         if (response == null
                 || response.getKHQRStatus() == null
@@ -249,6 +291,8 @@ public class PaymentServiceImpl implements PaymentService {
             }
 
             paymentRepository.save(payment);
+            telegramService.sendPaymentNotification(
+                    paymentMapper.toResponse(payment));
         } else {
             paymentRepository.save(payment);
         }

@@ -3,10 +3,15 @@ package com.example.spring_boot_project_api.service.impl;
 import java.util.List;
 import java.util.function.Consumer;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
@@ -94,7 +99,7 @@ public class AIServiceImpl implements AIService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AIConversationResponse> getUserConversations(Long userId) {
+    public PagedResponse<AIConversationResponse> getUserConversations(Long userId, int page, int size) {
 
         // Check that user exists
         userRepository.findById(userId)
@@ -102,14 +107,25 @@ public class AIServiceImpl implements AIService {
                         new ResourceNotFoundException("User not found"));
 
         // Get user's conversations
-        List<AIConversation> conversations =
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                size > 0 ? Math.min(size, 50) : 20,
+                Sort.by(Sort.Direction.DESC, "updatedAt"));
+        Page<AIConversation> conversations =
                 aiConversationRepository
-                        .findByUserIdOrderByUpdatedAtDesc(userId);
+                        .findByUserIdOrderByUpdatedAtDesc(userId, pageable);
 
         // Convert Entity -> Response DTO
-        return conversations.stream()
+        List<AIConversationResponse> content = conversations.getContent().stream()
                 .map(aiMapper::toConversationResponse)
                 .toList();
+
+        return new PagedResponse<>(
+                content,
+                conversations.getTotalElements(),
+                conversations.getTotalPages(),
+                conversations.getNumber(),
+                conversations.getSize());
     }
 
     // =========================================================

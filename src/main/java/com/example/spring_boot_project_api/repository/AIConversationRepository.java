@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.sql.Date;
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,7 +13,7 @@ import org.springframework.data.repository.query.Param;
 import com.example.spring_boot_project_api.model.AIConversation;
 
 public interface AIConversationRepository extends JpaRepository<AIConversation, Long> {
-    List<AIConversation> findByUserIdOrderByUpdatedAtDesc(Long userId);
+    Page<AIConversation> findByUserIdOrderByUpdatedAtDesc(Long userId, Pageable pageable);
 
     interface ConversationTrendStat {
         Date getDay();

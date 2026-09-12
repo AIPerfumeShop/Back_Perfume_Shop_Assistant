@@ -19,10 +19,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
 import com.example.spring_boot_project_api.dto.request.ai.RenameConversationRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
+import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.AIService;
+import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -37,14 +40,19 @@ public class AIController {
         this.aiService = aiService;
     }
 
+    private Long currentUserId() {
+        return SecurityUtils.currentUserId()
+                .orElseThrow(() -> new UnauthorizedException("Authentication required"));
+    }
+
     //Send message and get AI response
     @Operation(summary = "Send a message to the AI assistant")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "AI response retrieved successfully")
     })
     @PostMapping("/chat")
-    public ResponseEntity<AIChatResponse> chat(@RequestParam Long userId, @Valid @RequestBody AIChatRequest request){
-        AIChatResponse response = aiService.chat(userId, request);
+    public ResponseEntity<AIChatResponse> chat(@Valid @RequestBody AIChatRequest request){
+        AIChatResponse response = aiService.chat(currentUserId(), request);
         return ResponseEntity.ok(response);
     }
 
@@ -54,7 +62,8 @@ public class AIController {
         @ApiResponse(responseCode = "200", description = "AI response streamed as text/event-stream")
     })
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamChat(@RequestParam Long userId, @Valid @RequestBody AIChatRequest request){
+    public SseEmitter streamChat(@Valid @RequestBody AIChatRequest request){
+        Long userId = currentUserId();
         // 3 minute timeout
         SseEmitter emitter = new SseEmitter(300_000L);
 
@@ -78,15 +87,16 @@ public class AIController {
         return emitter;
     }
 
-    //get all conversations of a user
-    @Operation(summary = "Get all conversations of a user")
+    //get all conversations of the authenticated user
+    @Operation(summary = "Get the authenticated user's conversations (paginated)")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Conversations retrieved successfully")
     })
     @GetMapping("/conversations")
-    public ResponseEntity<List<AIConversationResponse>> getUserConversations(@RequestParam Long userId){
-        List<AIConversationResponse> conversations = aiService.getUserConversations(userId);
-        return ResponseEntity.ok(conversations);
+    public ResponseEntity<PagedResponse<AIConversationResponse>> getUserConversations(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size){
+        return ResponseEntity.ok(aiService.getUserConversations(currentUserId(), page, size));
     }
 
     //Get Messages of a conversation
@@ -95,8 +105,8 @@ public class AIController {
         @ApiResponse(responseCode = "200", description = "Messages retrieved successfully")
     })
     @GetMapping("/conversations/{conversationId}/messages")
-    public ResponseEntity<List<AIMessageResponse>> getConversationMessages(@RequestParam Long userId, @PathVariable Long conversationId){
-        List<AIMessageResponse> messages = aiService.getConversationMessages(userId, conversationId);
+    public ResponseEntity<List<AIMessageResponse>> getConversationMessages(@PathVariable Long conversationId){
+        List<AIMessageResponse> messages = aiService.getConversationMessages(currentUserId(), conversationId);
         return ResponseEntity.ok(messages);
     }
 
@@ -106,12 +116,11 @@ public class AIController {
     })
     @PutMapping("/conversations/{conversationId}")
     public ResponseEntity<AIConversationResponse> updateConversation(
-            @RequestParam Long userId,
             @PathVariable Long conversationId,
             @RequestBody @Valid RenameConversationRequest request) {
 
         AIConversationResponse response =
-                aiService.updateConversation(userId, conversationId, request.getTitle());
+                aiService.updateConversation(currentUserId(), conversationId, request.getTitle());
         return ResponseEntity.ok(response);
     }
     @Operation(summary = "Delete a conversation")
@@ -127,10 +136,9 @@ public class AIController {
     })
     @DeleteMapping("/conversations/{conversationId}")
     public ResponseEntity<Void> deleteConversation(
-            @RequestParam Long userId,
             @PathVariable Long conversationId) {
 
-        aiService.deleteConversation(userId, conversationId);
+        aiService.deleteConversation(currentUserId(), conversationId);
         return ResponseEntity.noContent().build();
     }
 }

@@ -32,6 +32,12 @@ public class PasswordResetToken {
     @Column(name = "context", length = 255)
     private String context;
 
+    @Column(name = "attempt_count", nullable = false, columnDefinition = "int default 0")
+    private int attemptCount;
+
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

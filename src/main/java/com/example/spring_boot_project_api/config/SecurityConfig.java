@@ -2,6 +2,7 @@ package com.example.spring_boot_project_api.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -9,6 +10,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -16,6 +18,15 @@ import jakarta.servlet.http.HttpServletResponse;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @Value("${app.rate-limit.enabled:true}")
+    private boolean rateLimitEnabled;
+
+    @Value("${app.rate-limit.capacity:5}")
+    private int rateLimitCapacity;
+
+    @Value("${app.rate-limit.window-seconds:60}")
+    private int rateLimitWindowSeconds;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -65,7 +76,6 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/auth/register").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/ai/**").permitAll()
                 .requestMatchers("/swagger-ui/**").permitAll()
                 .requestMatchers("/swagger-ui.html").permitAll()
                 .requestMatchers("/v3/api-docs/**").permitAll()
@@ -78,11 +88,26 @@ public class SecurityConfig {
                 .requestMatchers("/api/products/**").permitAll()
                 .requestMatchers("/api/upload/**").permitAll()
                 .requestMatchers("/api/orders/**").authenticated()
+                .requestMatchers("/api/cs/analytics").hasRole("ADMIN")
+                .requestMatchers("/api/cs/queue").hasRole("ADMIN")
+                .requestMatchers("/api/cs/tickets/*/context").hasRole("ADMIN")
+                .requestMatchers("/api/cs/tickets/*/reply").hasRole("ADMIN")
+                .requestMatchers("/api/cs/tickets/*/status").hasRole("ADMIN")
+                .requestMatchers("/api/cs/tickets/*/priority").hasRole("ADMIN")
+                .requestMatchers("/api/cs/tickets/*/notes").hasRole("ADMIN")
                 .requestMatchers("/api/cs/**").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> rateLimitFilter() {
+        RateLimitFilter filter = new RateLimitFilter(rateLimitEnabled, rateLimitCapacity, rateLimitWindowSeconds);
+        FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setOrder(-110);
+        return registration;
     }
 
     private void writeJson(HttpServletResponse response, int status, String message) throws java.io.IOException {

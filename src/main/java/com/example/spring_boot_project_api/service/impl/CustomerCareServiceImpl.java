@@ -9,11 +9,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.cs.CsChatRequest;
 import com.example.spring_boot_project_api.dto.request.cs.HandoffRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
 import com.example.spring_boot_project_api.dto.response.cs.CsChatResponse;
 import com.example.spring_boot_project_api.dto.response.cs.SupportAnalyticsResponse;
@@ -301,10 +306,20 @@ public class CustomerCareServiceImpl implements CustomerCareService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SupportTicketResponse> getCustomerTickets(Long userId) {
+    public PagedResponse<SupportTicketResponse> getCustomerTickets(Long userId, int page, int size) {
         findUser(userId);
-        return supportTicketMapper.toResponseList(
-                supportTicketRepository.findByUserIdOrderByCreatedAtDesc(userId));
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                size > 0 ? Math.min(size, 50) : 20,
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<SupportTicket> tickets = supportTicketRepository
+                .findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        return new PagedResponse<>(
+                supportTicketMapper.toResponseList(tickets.getContent()),
+                tickets.getTotalElements(),
+                tickets.getTotalPages(),
+                tickets.getNumber(),
+                tickets.getSize());
     }
 
     @Override
