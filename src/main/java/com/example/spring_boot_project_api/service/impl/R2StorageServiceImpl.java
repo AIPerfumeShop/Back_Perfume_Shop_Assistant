@@ -29,7 +29,7 @@ public class R2StorageServiceImpl implements UploadStorageService {
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "image/jpeg", "image/png", "image/webp");
     private static final Set<String> ALLOWED_FOLDERS = Set.of(
-            "products", "brands", "categories");
+            "products", "brands", "categories", "profiles");
     private static final String DEFAULT_FOLDER = "products";
 
     private final S3Client s3Client;
