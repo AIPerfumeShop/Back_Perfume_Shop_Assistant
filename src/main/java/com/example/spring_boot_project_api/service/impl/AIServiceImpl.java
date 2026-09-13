@@ -1,6 +1,5 @@
 package com.example.spring_boot_project_api.service.impl;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -23,15 +22,13 @@ import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.AIMapper;
 import com.example.spring_boot_project_api.model.AIConversation;
 import com.example.spring_boot_project_api.model.AIMessage;
-import com.example.spring_boot_project_api.model.Product;
-import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.AIConversationRepository;
 import com.example.spring_boot_project_api.repository.AIMessageRepository;
-import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.AIService;
 import com.example.spring_boot_project_api.service.OpenRouterService;
+import com.example.spring_boot_project_api.util.ProductCatalogBuilder;
 
 @Service
 public class AIServiceImpl implements AIService {
@@ -39,25 +36,23 @@ public class AIServiceImpl implements AIService {
     private final AIConversationRepository aiConversationRepository;
     private final AIMessageRepository aiMessageRepository;
     private final UserRepository userRepository;
-    private final ProductRepository productRepository;
+    private final ProductCatalogBuilder productCatalogBuilder;
     private final AIMapper aiMapper;
     private final OpenRouterService openRouterService;
     private static final int MAX_HISTORY_SIZE = 30;
-
-    private static final int MAX_CATALOG_SIZE = 100;
 
     public AIServiceImpl(
             AIConversationRepository aiConversationRepository,
             AIMessageRepository aiMessageRepository,
             UserRepository userRepository,
-            ProductRepository productRepository,
+            ProductCatalogBuilder productCatalogBuilder,
             AIMapper aiMapper,
             OpenRouterService openRouterService) {
 
         this.aiConversationRepository = aiConversationRepository;
         this.aiMessageRepository = aiMessageRepository;
         this.userRepository = userRepository;
-        this.productRepository = productRepository;
+        this.productCatalogBuilder = productCatalogBuilder;
         this.aiMapper = aiMapper;
         this.openRouterService = openRouterService;
     }
@@ -65,52 +60,6 @@ public class AIServiceImpl implements AIService {
     // =========================================================
     // CHAT
     // =========================================================
-
-    // Build a compact text snapshot of the shop catalog so the model only
-    // recommends products that actually exist (id, name, brand, price, stock).
-    private String buildProductCatalog() {
-        java.util.List<Product> products = productRepository.findAll();
-        if (products.isEmpty()) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(
-                "Blossom Fragrance product catalog. Recommend ONLY products "
-                + "from this list, using their exact names. Never invent names, "
-                + "prices, or products that are not listed here:");
-        int added = 0;
-        for (Product product : products) {
-            if (added >= MAX_CATALOG_SIZE) {
-                break;
-            }
-            if (!Boolean.TRUE.equals(product.getIsActive())) {
-                continue;
-            }
-            boolean inStock = false;
-            BigDecimal price = null;
-            if (product.getVariants() != null) {
-                for (ProductVariant variant : product.getVariants()) {
-                    if (!Boolean.TRUE.equals(variant.getIsActive())) {
-                        continue;
-                    }
-                    if (variant.getStock() != null && variant.getStock() > 0) {
-                        inStock = true;
-                    }
-                    if (variant.getPrice() != null
-                            && (price == null || variant.getPrice().compareTo(price) < 0)) {
-                        price = variant.getPrice();
-                    }
-                }
-            }
-            sb.append("\n- ").append(product.getName())
-                    .append(" (brand: ")
-                    .append(product.getBrand() != null ? product.getBrand().getName() : "unknown")
-                    .append(", from ").append(price != null ? "$" + price : "price unavailable")
-                    .append(", in stock: ").append(inStock ? "yes" : "no")
-                    .append(")");
-            added++;
-        }
-        return sb.toString();
-    }
 
     @Override
     @Transactional
@@ -120,7 +69,7 @@ public class AIServiceImpl implements AIService {
         saveUserMessage(request, conversation);
         List<AIMessage> history = loadHistory(conversation.getId());
 
-        String aiText = openRouterService.generateResponse(history, buildProductCatalog());
+        String aiText = openRouterService.generateResponse(history, productCatalogBuilder.build());
         AIMessage aiMessage = saveAssistantMessage(aiText, conversation);
 
         return buildChatResponse(conversation.getId(), aiMessage);
@@ -135,7 +84,7 @@ public class AIServiceImpl implements AIService {
         List<AIMessage> history = loadHistory(conversation.getId());
 
         StringBuilder collected = new StringBuilder();
-        openRouterService.streamGenerateResponse(history, buildProductCatalog(), token -> {
+        openRouterService.streamGenerateResponse(history, productCatalogBuilder.build(), token -> {
             collected.append(token);
             onToken.accept(token);
         });

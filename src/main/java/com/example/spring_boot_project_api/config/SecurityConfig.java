@@ -96,6 +96,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/cs/tickets/*/priority").hasRole("ADMIN")
                 .requestMatchers("/api/cs/tickets/*/notes").hasRole("ADMIN")
                 .requestMatchers("/api/cs/**").authenticated()
+                // WebSocket handshake is authenticated at the STOMP layer
+                .requestMatchers("/ws/**").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

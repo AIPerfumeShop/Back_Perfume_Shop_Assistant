@@ -52,6 +52,7 @@ import com.example.spring_boot_project_api.repository.SupportTicketRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.CustomerCareService;
 import com.example.spring_boot_project_api.service.OpenRouterService;
+import com.example.spring_boot_project_api.util.ProductCatalogBuilder;
 import com.example.spring_boot_project_api.service.OrderService;
 import com.example.spring_boot_project_api.service.TelegramService;
 
@@ -78,6 +79,7 @@ public class CustomerCareServiceImpl implements CustomerCareService {
     private final OrderRepository orderRepository;
     private final OpenRouterService openRouterService;
     private final TelegramService telegramService;
+    private final ProductCatalogBuilder productCatalogBuilder;
 
     @Value("${customer-care.offline:false}")
     private boolean teamOffline;
@@ -94,7 +96,8 @@ public class CustomerCareServiceImpl implements CustomerCareService {
             OrderService orderService,
             OrderRepository orderRepository,
             OpenRouterService openRouterService,
-            TelegramService telegramService) {
+            TelegramService telegramService,
+            ProductCatalogBuilder productCatalogBuilder) {
         this.supportTicketRepository = supportTicketRepository;
         this.noteRepository = noteRepository;
         this.aiConversationRepository = aiConversationRepository;
@@ -107,6 +110,7 @@ public class CustomerCareServiceImpl implements CustomerCareService {
         this.orderRepository = orderRepository;
         this.openRouterService = openRouterService;
         this.telegramService = telegramService;
+        this.productCatalogBuilder = productCatalogBuilder;
     }
 
     private enum Intent {
@@ -239,7 +243,7 @@ public class CustomerCareServiceImpl implements CustomerCareService {
                 conversation));
 
         try {
-            return openRouterService.generateResponse(context);
+            return openRouterService.generateResponse(context, productCatalogBuilder.build());
         } catch (Exception ex) {
             return null;
         }
@@ -423,6 +427,13 @@ public class CustomerCareServiceImpl implements CustomerCareService {
         aiConversationRepository.save(conversation);
 
         return aiMapper.toMessageResponse(customerMessage);
+    }
+
+    @Override
+    public boolean isTicketOwner(Long userId, Long ticketId) {
+        SupportTicket ticket = findTicket(ticketId);
+        checkOwnership(ticket, userId);
+        return true;
     }
 
     // =========================================================

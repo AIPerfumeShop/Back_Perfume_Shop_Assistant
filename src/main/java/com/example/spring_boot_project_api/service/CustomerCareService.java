@@ -38,6 +38,9 @@ public interface CustomerCareService {
     //Customer continues the ticket thread (offline "we'll get back to you" flow)
     AIMessageResponse replyAsCustomer(Long userId, Long ticketId, String message);
 
+    //Whether a user owns a ticket (guard for live message subscriptions)
+    boolean isTicketOwner(Long userId, Long ticketId);
+
     SupportTicketResponse updateTicketStatus(Long ticketId, TicketStatus status);
 
     SupportTicketResponse updateTicketPriority(Long ticketId, TicketPriority priority);

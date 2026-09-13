@@ -30,9 +30,9 @@ import com.example.spring_boot_project_api.model.AIMessage;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.AIConversationRepository;
 import com.example.spring_boot_project_api.repository.AIMessageRepository;
-import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.impl.AIServiceImpl;
+import com.example.spring_boot_project_api.util.ProductCatalogBuilder;
 
 @ExtendWith(MockitoExtension.class)
 class AIServiceImplTest {
@@ -47,7 +47,7 @@ class AIServiceImplTest {
     private UserRepository userRepository;
 
     @Mock
-    private ProductRepository productRepository;
+    private ProductCatalogBuilder productCatalogBuilder;
 
     @Mock
     private AIMapper aiMapper;
@@ -60,7 +60,7 @@ class AIServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(productRepository.findAll()).thenReturn(List.of());
+        lenient().when(productCatalogBuilder.build()).thenReturn("");
     }
 
     private User user(Long id) {
