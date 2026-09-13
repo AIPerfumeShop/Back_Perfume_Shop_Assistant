@@ -20,6 +20,9 @@ public class UpdateUserRequest {
     @Size(max = 30, message = "Phone must be under 30 characters")
     private String phone;
 
+    @Size(max = 500, message = "Image URL must be under 500 characters")
+    private String userImageUrl;
+
     private Role role;
 
     @Size(min = 8, max = 255, message = "Password must be between 8 and 255 characters")

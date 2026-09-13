@@ -160,6 +160,10 @@ public class AuthServiceImpl implements AuthService {
         if (request.phone() != null && !request.phone().isBlank()) {
             user.setPhone(request.phone().trim());
         }
+        if (request.userImageUrl() != null) {
+            String imageUrl = request.userImageUrl().trim();
+            user.setUserImageUrl(imageUrl.isEmpty() ? null : imageUrl);
+        }
         userRepository.save(user);
         return UserMapper.toUserResponse(user);
     }

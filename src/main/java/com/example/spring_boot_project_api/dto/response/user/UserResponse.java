@@ -9,6 +9,7 @@ public record UserResponse(
         String name,
         String email,
         String phone,
+        String userImageUrl,
         Role role,
         Boolean isActive,
         LocalDateTime createdAt) {

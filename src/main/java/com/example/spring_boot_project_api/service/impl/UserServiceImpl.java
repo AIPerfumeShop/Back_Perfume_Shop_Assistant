@@ -116,6 +116,9 @@ public class UserServiceImpl implements UserService {
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setPhone(request.getPhone() == null || request.getPhone().isBlank() ? null : request.getPhone().trim());
+        user.setUserImageUrl(request.getUserImageUrl() == null || request.getUserImageUrl().isBlank()
+                ? null
+                : request.getUserImageUrl().trim());
         user.setRole(request.getRole());
         user.setIsActive(true);
         user.setIsDeleted(false);

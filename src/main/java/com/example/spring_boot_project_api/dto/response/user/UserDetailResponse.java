@@ -17,6 +17,7 @@ public class UserDetailResponse {
     private String name;
     private String email;
     private String phone;
+    private String userImageUrl;
     private Role role;
     private Boolean isActive;
     private Long totalOrders;

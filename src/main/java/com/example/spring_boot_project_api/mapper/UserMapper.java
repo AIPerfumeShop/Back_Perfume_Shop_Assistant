@@ -22,6 +22,7 @@ public class UserMapper {
                 user.getName(),
                 user.getEmail(),
                 user.getPhone(),
+                user.getUserImageUrl(),
                 user.getRole(),
                 user.getIsActive(),
                 user.getCreatedAt());
@@ -36,6 +37,7 @@ public class UserMapper {
         response.setName(user.getName());
         response.setEmail(user.getEmail());
         response.setPhone(user.getPhone());
+        response.setUserImageUrl(user.getUserImageUrl());
         response.setRole(user.getRole());
         response.setIsActive(user.getIsActive());
         response.setOrderCount(orderCount != null ? orderCount : 0L);
@@ -54,6 +56,7 @@ public class UserMapper {
         response.setName(user.getName());
         response.setEmail(user.getEmail());
         response.setPhone(user.getPhone());
+        response.setUserImageUrl(user.getUserImageUrl());
         response.setRole(user.getRole());
         response.setIsActive(user.getIsActive());
         response.setTotalOrders(totalOrders != null ? totalOrders : 0L);
@@ -78,6 +81,10 @@ public class UserMapper {
         }
         if (request.getPhone() != null) {
             user.setPhone(request.getPhone());
+        }
+        if (request.getUserImageUrl() != null) {
+            String imageUrl = request.getUserImageUrl().trim();
+            user.setUserImageUrl(imageUrl.isEmpty() ? null : imageUrl);
         }
         if (request.getRole() != null) {
             user.setRole(request.getRole());

@@ -275,7 +275,7 @@ class AuthServiceImplTest {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         stubUserSave();
 
-        UserResponse response = authService.updateProfile(1L, new UpdateProfileRequest("  New Name ", "0991234567"));
+        UserResponse response = authService.updateProfile(1L, new UpdateProfileRequest("  New Name ", "0991234567", null));
 
         assertEquals("New Name", response.name());
         assertEquals("0991234567", response.phone());
@@ -288,7 +288,7 @@ class AuthServiceImplTest {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> authService.updateProfile(99L, new UpdateProfileRequest("New Name", "0991234567")));
+                () -> authService.updateProfile(99L, new UpdateProfileRequest("New Name", "0991234567", null)));
     }
 
     @Test

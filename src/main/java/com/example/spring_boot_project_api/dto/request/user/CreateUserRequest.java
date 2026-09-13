@@ -28,6 +28,9 @@ public class CreateUserRequest {
     @Size(max = 30, message = "Phone must be under 30 characters")
     private String phone;
 
+    @Size(max = 500, message = "Image URL must be under 500 characters")
+    private String userImageUrl;
+
     @NotNull(message = "Role is required")
     private Role role;
 }
