@@ -116,7 +116,6 @@ class OrderServiceTest {
 
     private CreateOrderRequest createOrderRequest() {
         CreateOrderRequest request = new CreateOrderRequest();
-        request.setUserId(1L);
         request.setShippingAddress("Phnom Penh");
         request.setPhone("012345678");
 
@@ -141,7 +140,7 @@ class OrderServiceTest {
                     return order;
                 });
 
-        OrderResponse response = orderService.createOrder(createOrderRequest());
+        OrderResponse response = orderService.createOrder(1L, createOrderRequest());
 
         assertNotNull(response);
         assertEquals(1L, response.getId());
@@ -164,7 +163,6 @@ class OrderServiceTest {
                 .thenAnswer(inv -> inv.getArgument(0));
 
         CreateOrderRequest request = new CreateOrderRequest();
-        request.setUserId(1L);
         request.setShippingAddress("Phnom Penh");
         request.setPhone("012345678");
         OrderItemRequest item1 = new OrderItemRequest();
@@ -175,7 +173,7 @@ class OrderServiceTest {
         item2.setQuantity(3);
         request.setItems(List.of(item1, item2));
 
-        OrderResponse response = orderService.createOrder(request);
+        OrderResponse response = orderService.createOrder(1L, request);
 
         // 2*59.50 + 3*59.50 = 5*59.50 = 297.50
         assertEquals(new BigDecimal("297.50"), response.getTotalAmount());
@@ -186,10 +184,9 @@ class OrderServiceTest {
     void createOrder_userNotFound_throws() {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
         CreateOrderRequest request = createOrderRequest();
-        request.setUserId(99L);
 
         assertThrows(ResourceNotFoundException.class,
-                () -> orderService.createOrder(request));
+                () -> orderService.createOrder(99L, request));
     }
 
     @Test
@@ -201,7 +198,7 @@ class OrderServiceTest {
         request.getItems().get(0).setVariantId(999L);
 
         assertThrows(InvalidOrderException.class,
-                () -> orderService.createOrder(request));
+                () -> orderService.createOrder(1L, request));
     }
 
     @Test
@@ -214,7 +211,7 @@ class OrderServiceTest {
         request.getItems().get(0).setQuantity(5);
 
         assertThrows(InvalidOrderException.class,
-                () -> orderService.createOrder(request));
+                () -> orderService.createOrder(1L, request));
     }
 
     @Test
@@ -225,7 +222,7 @@ class OrderServiceTest {
         when(productVariantRepository.findById(5L)).thenReturn(Optional.of(variant));
 
         assertThrows(InvalidOrderException.class,
-                () -> orderService.createOrder(createOrderRequest()));
+                () -> orderService.createOrder(1L, createOrderRequest()));
     }
 
     // ---------- get order by id (ownership) ----------

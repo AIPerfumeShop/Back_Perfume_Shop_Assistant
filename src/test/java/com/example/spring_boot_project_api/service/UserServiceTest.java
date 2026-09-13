@@ -23,24 +23,24 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.example.spring_boot_project_api.dto.request.customer.CustomerFilterRequest;
-import com.example.spring_boot_project_api.dto.request.customer.CustomerUpdateRequest;
+import com.example.spring_boot_project_api.dto.request.user.UpdateUserRequest;
+import com.example.spring_boot_project_api.dto.request.user.UserFilterRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
-import com.example.spring_boot_project_api.dto.response.customer.CustomerDetailResponse;
-import com.example.spring_boot_project_api.dto.response.customer.CustomerSummaryResponse;
+import com.example.spring_boot_project_api.dto.response.user.UserDetailResponse;
+import com.example.spring_boot_project_api.dto.response.user.UserSummaryResponse;
 import com.example.spring_boot_project_api.enums.Role;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
-import com.example.spring_boot_project_api.mapper.CustomerMapper;
 import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
-import com.example.spring_boot_project_api.service.impl.CustomerServiceImpl;
+import com.example.spring_boot_project_api.service.impl.UserServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
-class CustomerServiceTest {
+class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
@@ -48,12 +48,14 @@ class CustomerServiceTest {
     @Mock
     private OrderRepository orderRepository;
 
-    private CustomerServiceImpl customerService;
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
+    private UserServiceImpl userService;
 
     @BeforeEach
     void setUp() {
-        customerService = new CustomerServiceImpl(
-                userRepository, orderRepository, new CustomerMapper());
+        userService = new UserServiceImpl(userRepository, orderRepository, passwordEncoder);
     }
 
     private User user(Long id, String name, String email, boolean active) {
@@ -102,10 +104,10 @@ class CustomerServiceTest {
         }
     }
 
-    // ---------- list customers ----------
+    // ---------- list users ----------
 
     @Test
-    void getAllCustomers_returnsPagedWithStats() {
+    void getAllUsers_returnsPagedWithStats() {
         User user = user(1L, "Chan Dara", "dara@example.com", true);
         Page<User> page = new PageImpl<>(List.of(user));
         when(userRepository.findAll(any(Specification.class), any(Pageable.class)))
@@ -113,13 +115,13 @@ class CustomerServiceTest {
         when(orderRepository.countOrdersByUserIds(List.of(1L)))
                 .thenReturn(List.of(new UserOrderStatImpl(1L, 3L, new BigDecimal("180.00"))));
 
-        CustomerFilterRequest filter = new CustomerFilterRequest();
-        PagedResponse<CustomerSummaryResponse> response =
-                customerService.getAllCustomers(filter);
+        UserFilterRequest filter = new UserFilterRequest();
+        PagedResponse<UserSummaryResponse> response =
+                userService.getAllUsers(filter);
 
         assertNotNull(response);
         assertEquals(1, response.getData().size());
-        CustomerSummaryResponse summary = response.getData().get(0);
+        UserSummaryResponse summary = response.getData().get(0);
         assertEquals(1L, summary.getId());
         assertEquals("Chan Dara", summary.getName());
         assertEquals(3L, summary.getOrderCount());
@@ -128,7 +130,7 @@ class CustomerServiceTest {
     }
 
     @Test
-    void getAllCustomers_noOrders_statsZero() {
+    void getAllUsers_noOrders_statsZero() {
         User user = user(1L, "Chan Dara", "dara@example.com", true);
         Page<User> page = new PageImpl<>(List.of(user));
         when(userRepository.findAll(any(Specification.class), any(Pageable.class)))
@@ -136,30 +138,30 @@ class CustomerServiceTest {
         when(orderRepository.countOrdersByUserIds(List.of(1L)))
                 .thenReturn(List.of());
 
-        CustomerFilterRequest filter = new CustomerFilterRequest();
-        PagedResponse<CustomerSummaryResponse> response =
-                customerService.getAllCustomers(filter);
+        UserFilterRequest filter = new UserFilterRequest();
+        PagedResponse<UserSummaryResponse> response =
+                userService.getAllUsers(filter);
 
-        CustomerSummaryResponse summary = response.getData().get(0);
+        UserSummaryResponse summary = response.getData().get(0);
         assertEquals(0L, summary.getOrderCount());
         assertEquals(BigDecimal.ZERO, summary.getTotalSpent());
     }
 
     @Test
-    void getAllCustomers_emptyPage_returnsEmpty() {
+    void getAllUsers_emptyPage_returnsEmpty() {
         when(userRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        PagedResponse<CustomerSummaryResponse> response =
-                customerService.getAllCustomers(new CustomerFilterRequest());
+        PagedResponse<UserSummaryResponse> response =
+                userService.getAllUsers(new UserFilterRequest());
 
         assertTrue(response.getData().isEmpty());
     }
 
-    // ---------- customer detail ----------
+    // ---------- user detail ----------
 
     @Test
-    void getCustomerById_returnsDetailWithRecentOrders() {
+    void getUserById_returnsDetailWithRecentOrders() {
         User user = user(1L, "Chan Dara", "dara@example.com", true);
         List<Order> orders = List.of(
                 order(3L, new BigDecimal("60.00")),
@@ -168,7 +170,7 @@ class CustomerServiceTest {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(orderRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(orders);
 
-        CustomerDetailResponse response = customerService.getCustomerById(1L);
+        UserDetailResponse response = userService.getUserById(1L);
 
         assertNotNull(response);
         assertEquals(1L, response.getId());
@@ -178,28 +180,28 @@ class CustomerServiceTest {
     }
 
     @Test
-    void getCustomerById_notFound_throws() {
+    void getUserById_notFound_throws() {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> customerService.getCustomerById(99L));
+                () -> userService.getUserById(99L));
     }
 
-    // ---------- update customer ----------
+    // ---------- update user ----------
 
     @Test
-    void updateCustomer_updatesFields() {
+    void updateUser_updatesFields() {
         User user = user(1L, "Old Name", "old@example.com", true);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.existsByEmailAndIdNot("new@example.com", 1L)).thenReturn(false);
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CustomerUpdateRequest request = new CustomerUpdateRequest();
+        UpdateUserRequest request = new UpdateUserRequest();
         request.setName("New Name");
         request.setEmail("new@example.com");
         request.setPhone("099000111");
 
-        CustomerSummaryResponse response = customerService.updateCustomer(1L, request);
+        UserSummaryResponse response = userService.updateUser(1L, request);
 
         assertEquals("New Name", response.getName());
         assertEquals("new@example.com", response.getEmail());
@@ -208,63 +210,63 @@ class CustomerServiceTest {
     }
 
     @Test
-    void updateCustomer_duplicateEmail_throws() {
+    void updateUser_duplicateEmail_throws() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user(1L, "A", "a@example.com", true)));
         when(userRepository.existsByEmailAndIdNot("b@example.com", 1L)).thenReturn(true);
 
-        CustomerUpdateRequest request = new CustomerUpdateRequest();
+        UpdateUserRequest request = new UpdateUserRequest();
         request.setEmail("b@example.com");
 
         assertThrows(BadRequestException.class,
-                () -> customerService.updateCustomer(1L, request));
+                () -> userService.updateUser(1L, request));
     }
 
     @Test
-    void updateCustomer_notFound_throws() {
+    void updateUser_notFound_throws() {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> customerService.updateCustomer(99L, new CustomerUpdateRequest()));
+                () -> userService.updateUser(99L, new UpdateUserRequest()));
     }
 
     // ---------- activate / deactivate ----------
 
     @Test
-    void activateCustomer_setsActive() {
+    void activateUser_setsActive() {
         User user = user(1L, "A", "a@example.com", false);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        customerService.activateCustomer(1L);
+        userService.activateUser(1L);
 
         assertTrue(user.getIsActive());
         verify(userRepository).save(user);
     }
 
     @Test
-    void activateCustomer_alreadyActive_throws() {
+    void activateUser_alreadyActive_throws() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user(1L, "A", "a@example.com", true)));
 
         assertThrows(BadRequestException.class,
-                () -> customerService.activateCustomer(1L));
+                () -> userService.activateUser(1L));
     }
 
     @Test
-    void deactivateCustomer_setsInactive() {
+    void deactivateUser_setsInactive() {
         User user = user(1L, "A", "a@example.com", true);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        customerService.deactivateCustomer(1L);
+        userService.deactivateUser(1L);
 
         assertFalse(user.getIsActive());
     }
 
     @Test
-    void deactivateCustomer_alreadyInactive_throws() {
+    void deactivateUser_alreadyInactive_throws() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user(1L, "A", "a@example.com", false)));
 
         assertThrows(BadRequestException.class,
-                () -> customerService.deactivateCustomer(1L));
+                () -> userService.deactivateUser(1L));
     }
 }

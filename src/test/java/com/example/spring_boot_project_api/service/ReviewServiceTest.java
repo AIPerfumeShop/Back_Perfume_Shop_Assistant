@@ -34,7 +34,9 @@ import com.example.spring_boot_project_api.mapper.ReviewMapper;
 import com.example.spring_boot_project_api.model.Product;
 import com.example.spring_boot_project_api.model.Review;
 import com.example.spring_boot_project_api.model.User;
+import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.ReviewRepository;
+import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.impl.ReviewServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,11 +45,18 @@ class ReviewServiceTest {
     @Mock
     private ReviewRepository reviewRepository;
 
+    @Mock
+    private ProductRepository productRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
     private ReviewServiceImpl reviewService;
 
     @BeforeEach
     void setUp() {
-        reviewService = new ReviewServiceImpl(reviewRepository, new ReviewMapper());
+        reviewService = new ReviewServiceImpl(
+                reviewRepository, new ReviewMapper(), productRepository, userRepository);
     }
 
     private Review review(Long id, boolean approved, boolean deleted) {

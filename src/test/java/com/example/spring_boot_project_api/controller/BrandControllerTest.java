@@ -32,7 +32,10 @@ import com.example.spring_boot_project_api.dto.response.brand.BrandStatisticsRes
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ConflictException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
+import com.example.spring_boot_project_api.config.JwtTokenProvider;
+import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.BrandService;
+import com.example.spring_boot_project_api.service.ProductService;
 
 @WebMvcTest(BrandController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -43,6 +46,15 @@ class BrandControllerTest {
 
     @MockitoBean
     private BrandService brandService;
+
+    @MockitoBean
+    private ProductService productService;
+
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     private BrandResponse brandResponse() {
         BrandResponse response = new BrandResponse();

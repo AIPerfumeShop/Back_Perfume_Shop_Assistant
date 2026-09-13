@@ -93,7 +93,6 @@ class CheckoutServiceTest {
 
     private CheckoutRequest checkoutRequest() {
         CheckoutRequest request = new CheckoutRequest();
-        request.setUserId(1L);
         request.setShippingAddress("Phnom Penh");
         request.setPhone("012345678");
         request.setPaymentMethod("ABA");
@@ -130,7 +129,7 @@ class CheckoutServiceTest {
         CheckoutRequest request = checkoutRequest();
         request.setItems(List.of(itemRequest(5L, 2)));
 
-        CheckoutResponse response = orderService.checkout(request);
+        CheckoutResponse response = orderService.checkout(1L, request);
 
         assertNotNull(response);
         assertEquals(1L, response.getOrderId());
@@ -170,7 +169,7 @@ class CheckoutServiceTest {
         CheckoutRequest request = checkoutRequest();
         request.setItems(List.of(itemRequest(5L, 3)));
 
-        CheckoutResponse response = orderService.checkout(request);
+        CheckoutResponse response = orderService.checkout(1L, request);
 
         assertEquals(OrderStatus.CANCELLED.name(), response.getOrderStatus());
         //Stock was restored: 10 - 3 + 3 = 10
@@ -186,7 +185,7 @@ class CheckoutServiceTest {
         request.setItems(List.of(itemRequest(5L, 1)));
 
         assertThrows(ResourceNotFoundException.class,
-                () -> orderService.checkout(request));
+                () -> orderService.checkout(1L, request));
     }
 
     @Test
@@ -198,7 +197,7 @@ class CheckoutServiceTest {
         request.setItems(List.of(itemRequest(500L, 1)));
 
         assertThrows(InvalidOrderException.class,
-                () -> orderService.checkout(request));
+                () -> orderService.checkout(1L, request));
     }
 
     @Test
@@ -211,7 +210,7 @@ class CheckoutServiceTest {
         request.setItems(List.of(itemRequest(5L, 5)));
 
         assertThrows(InvalidOrderException.class,
-                () -> orderService.checkout(request));
+                () -> orderService.checkout(1L, request));
         verify(orderRepository, never()).save(any(Order.class));
     }
 
@@ -226,7 +225,7 @@ class CheckoutServiceTest {
         request.setItems(List.of(itemRequest(5L, 1)));
 
         assertThrows(InvalidOrderException.class,
-                () -> orderService.checkout(request));
+                () -> orderService.checkout(1L, request));
     }
 
     @Test
@@ -248,7 +247,7 @@ class CheckoutServiceTest {
         CheckoutRequest request = checkoutRequest();
         request.setItems(List.of(itemRequest(1L, 2), itemRequest(2L, 3)));
 
-        CheckoutResponse response = orderService.checkout(request);
+        CheckoutResponse response = orderService.checkout(1L, request);
 
         // 2 * 10.00 = 20.00 ; 3 * 20.50 = 61.50 ; total = 81.50
         assertEquals(new BigDecimal("81.50"), response.getTotalAmount());
@@ -277,7 +276,7 @@ class CheckoutServiceTest {
         CheckoutRequest request = checkoutRequest();
         request.setItems(List.of(itemRequest(5L, 1)));
 
-        CheckoutResponse response = orderService.checkout(request);
+        CheckoutResponse response = orderService.checkout(1L, request);
 
         assertEquals(new BigDecimal("59.50"), response.getTotalAmount());
         assertEquals(9, variant.getStock());
@@ -305,7 +304,7 @@ class CheckoutServiceTest {
         request.setPaymentMethod("CASH");
         request.setItems(List.of());
 
-        CheckoutResponse response = orderService.checkout(request);
+        CheckoutResponse response = orderService.checkout(1L, request);
 
         assertEquals(0, BigDecimal.ZERO.compareTo(response.getTotalAmount()));
         assertEquals(PaymentMethod.CASH, response.getPaymentMethod());
@@ -326,7 +325,7 @@ class CheckoutServiceTest {
 
         CheckoutRequest request = checkoutRequest();
         request.setItems(List.of(itemRequest(5L, 3)));
-        orderService.checkout(request);
+        orderService.checkout(1L, request);
 
         assertEquals(7, variant.getStock());
 
@@ -335,7 +334,7 @@ class CheckoutServiceTest {
         when(paymentService.initPayment(any(Order.class), eq("ABA"))).thenReturn(payment2);
         when(paymentService.processPayment(11L)).thenReturn(true);
 
-        orderService.checkout(request);
+        orderService.checkout(1L, request);
 
         assertEquals(4, variant.getStock());
     }

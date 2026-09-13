@@ -30,7 +30,10 @@ import com.example.spring_boot_project_api.model.Category;
 import com.example.spring_boot_project_api.model.FragranceProfile;
 import com.example.spring_boot_project_api.model.Product;
 import com.example.spring_boot_project_api.model.ProductVariant;
+import com.example.spring_boot_project_api.repository.BrandRepository;
+import com.example.spring_boot_project_api.repository.CategoryRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository;
+import com.example.spring_boot_project_api.repository.ProductVariantRepository;
 import com.example.spring_boot_project_api.service.impl.ProductServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,11 +42,22 @@ class ProductServiceTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private BrandRepository brandRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
+
+    @Mock
+    private ProductVariantRepository productVariantRepository;
+
     private ProductServiceImpl productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductServiceImpl(productRepository, new ProductMapper());
+        productService = new ProductServiceImpl(
+                productRepository, new ProductMapper(),
+                brandRepository, categoryRepository, productVariantRepository);
     }
 
     private Brand brand() {

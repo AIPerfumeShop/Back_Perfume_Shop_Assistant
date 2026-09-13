@@ -21,27 +21,35 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.example.spring_boot_project_api.dto.request.customer.CustomerFilterRequest;
+import com.example.spring_boot_project_api.config.JwtTokenProvider;
+import com.example.spring_boot_project_api.dto.request.user.UserFilterRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
-import com.example.spring_boot_project_api.dto.response.customer.CustomerDetailResponse;
-import com.example.spring_boot_project_api.dto.response.customer.CustomerSummaryResponse;
+import com.example.spring_boot_project_api.dto.response.user.UserDetailResponse;
+import com.example.spring_boot_project_api.dto.response.user.UserSummaryResponse;
 import com.example.spring_boot_project_api.enums.Role;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
-import com.example.spring_boot_project_api.service.CustomerService;
+import com.example.spring_boot_project_api.repository.UserRepository;
+import com.example.spring_boot_project_api.service.UserService;
 
-@WebMvcTest(CustomerController.class)
+@WebMvcTest(UserController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class CustomerControllerTest {
+class UserControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
-    private CustomerService customerService;
+    private UserService userService;
 
-    private CustomerSummaryResponse summary() {
-        CustomerSummaryResponse response = new CustomerSummaryResponse();
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    private UserSummaryResponse summary() {
+        UserSummaryResponse response = new UserSummaryResponse();
         response.setId(1L);
         response.setName("Chan Dara");
         response.setEmail("dara@example.com");
@@ -54,8 +62,8 @@ class CustomerControllerTest {
         return response;
     }
 
-    private CustomerDetailResponse detail() {
-        CustomerDetailResponse response = new CustomerDetailResponse();
+    private UserDetailResponse detail() {
+        UserDetailResponse response = new UserDetailResponse();
         response.setId(1L);
         response.setName("Chan Dara");
         response.setEmail("dara@example.com");
@@ -68,14 +76,14 @@ class CustomerControllerTest {
         return response;
     }
 
-    // ---------- getAllCustomers ----------
+    // ---------- getAllUsers ----------
 
     @Test
-    void getAllCustomers_returnsPaged() throws Exception {
-        when(customerService.getAllCustomers(any(CustomerFilterRequest.class)))
+    void getAllUsers_returnsPaged() throws Exception {
+        when(userService.getAllUsers(any(UserFilterRequest.class)))
                 .thenReturn(new PagedResponse<>(List.of(summary()), 1, 1, 0, 20));
 
-        mockMvc.perform(get("/api/customers"))
+        mockMvc.perform(get("/api/users"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].name").value("Chan Dara"))
                 .andExpect(jsonPath("$.data[0].orderCount").value(3))
@@ -83,33 +91,33 @@ class CustomerControllerTest {
     }
 
     @Test
-    void getAllCustomers_emptyResult() throws Exception {
-        when(customerService.getAllCustomers(any(CustomerFilterRequest.class)))
+    void getAllUsers_emptyResult() throws Exception {
+        when(userService.getAllUsers(any(UserFilterRequest.class)))
                 .thenReturn(new PagedResponse<>(List.of(), 0, 0, 0, 20));
 
-        mockMvc.perform(get("/api/customers"))
+        mockMvc.perform(get("/api/users"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
 
     @Test
-    void getAllCustomers_withSearchFilter() throws Exception {
-        when(customerService.getAllCustomers(any(CustomerFilterRequest.class)))
+    void getAllUsers_withSearchFilter() throws Exception {
+        when(userService.getAllUsers(any(UserFilterRequest.class)))
                 .thenReturn(new PagedResponse<>(List.of(summary()), 1, 1, 0, 20));
 
-        mockMvc.perform(get("/api/customers").param("search", "Chan"))
+        mockMvc.perform(get("/api/users").param("search", "Chan"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].name").value("Chan Dara"));
     }
 
-    // ---------- getCustomerById ----------
+    // ---------- getUserById ----------
 
     @Test
-    void getCustomerById_returnsDetail() throws Exception {
-        when(customerService.getCustomerById(1L)).thenReturn(detail());
+    void getUserById_returnsDetail() throws Exception {
+        when(userService.getUserById(1L)).thenReturn(detail());
 
-        mockMvc.perform(get("/api/customers/1"))
+        mockMvc.perform(get("/api/users/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.name").value("Chan Dara"))
@@ -118,105 +126,105 @@ class CustomerControllerTest {
     }
 
     @Test
-    void getCustomerById_notFound_returns404() throws Exception {
-        when(customerService.getCustomerById(404L))
+    void getUserById_notFound_returns404() throws Exception {
+        when(userService.getUserById(404L))
                 .thenThrow(new ResourceNotFoundException("User not found"));
 
-        mockMvc.perform(get("/api/customers/404"))
+        mockMvc.perform(get("/api/users/404"))
                 .andExpect(status().isNotFound());
     }
 
-    // ---------- updateCustomer ----------
+    // ---------- updateUser ----------
 
     @Test
-    void updateCustomer_acceptsBody() throws Exception {
-        when(customerService.updateCustomer(org.mockito.ArgumentMatchers.eq(1L), any()))
+    void updateUser_acceptsBody() throws Exception {
+        when(userService.updateUser(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .thenReturn(summary());
 
-        mockMvc.perform(put("/api/customers/1")
+        mockMvc.perform(put("/api/users/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\": \"New Name\", \"email\": \"new@example.com\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Chan Dara"));
 
-        verify(customerService).updateCustomer(org.mockito.ArgumentMatchers.eq(1L), any());
+        verify(userService).updateUser(org.mockito.ArgumentMatchers.eq(1L), any());
     }
 
     @Test
-    void updateCustomer_notFound_returns404() throws Exception {
-        when(customerService.updateCustomer(org.mockito.ArgumentMatchers.eq(404L), any()))
+    void updateUser_notFound_returns404() throws Exception {
+        when(userService.updateUser(org.mockito.ArgumentMatchers.eq(404L), any()))
                 .thenThrow(new ResourceNotFoundException("User not found"));
 
-        mockMvc.perform(put("/api/customers/404")
+        mockMvc.perform(put("/api/users/404")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\": \"New Name\"}"))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void updateCustomer_duplicateEmail_returns400() throws Exception {
-        when(customerService.updateCustomer(org.mockito.ArgumentMatchers.eq(1L), any()))
+    void updateUser_duplicateEmail_returns400() throws Exception {
+        when(userService.updateUser(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .thenThrow(new BadRequestException("Email already exists"));
 
-        mockMvc.perform(put("/api/customers/1")
+        mockMvc.perform(put("/api/users/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\": \"taken@example.com\"}"))
                 .andExpect(status().isBadRequest());
     }
 
-    // ---------- activateCustomer ----------
+    // ---------- activateUser ----------
 
     @Test
-    void activateCustomer_returns204() throws Exception {
-        mockMvc.perform(patch("/api/customers/1/activate"))
+    void activateUser_returns204() throws Exception {
+        mockMvc.perform(patch("/api/users/1/activate"))
                 .andExpect(status().isNoContent());
 
-        verify(customerService).activateCustomer(1L);
+        verify(userService).activateUser(1L);
     }
 
     @Test
-    void activateCustomer_alreadyActive_returns400() throws Exception {
-        org.mockito.Mockito.doThrow(new BadRequestException("Customer is already active"))
-                .when(customerService).activateCustomer(1L);
+    void activateUser_alreadyActive_returns400() throws Exception {
+        org.mockito.Mockito.doThrow(new BadRequestException("User is already active"))
+                .when(userService).activateUser(1L);
 
-        mockMvc.perform(patch("/api/customers/1/activate"))
+        mockMvc.perform(patch("/api/users/1/activate"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    void activateCustomer_notFound_returns404() throws Exception {
+    void activateUser_notFound_returns404() throws Exception {
         org.mockito.Mockito.doThrow(new ResourceNotFoundException("User not found"))
-                .when(customerService).activateCustomer(404L);
+                .when(userService).activateUser(404L);
 
-        mockMvc.perform(patch("/api/customers/404/activate"))
+        mockMvc.perform(patch("/api/users/404/activate"))
                 .andExpect(status().isNotFound());
     }
 
-    // ---------- deactivateCustomer ----------
+    // ---------- deactivateUser ----------
 
     @Test
-    void deactivateCustomer_returns204() throws Exception {
-        mockMvc.perform(patch("/api/customers/1/deactivate"))
+    void deactivateUser_returns204() throws Exception {
+        mockMvc.perform(patch("/api/users/1/deactivate"))
                 .andExpect(status().isNoContent());
 
-        verify(customerService).deactivateCustomer(1L);
+        verify(userService).deactivateUser(1L);
     }
 
     @Test
-    void deactivateCustomer_alreadyInactive_returns400() throws Exception {
-        org.mockito.Mockito.doThrow(new BadRequestException("Customer is already deactivated"))
-                .when(customerService).deactivateCustomer(1L);
+    void deactivateUser_alreadyInactive_returns400() throws Exception {
+        org.mockito.Mockito.doThrow(new BadRequestException("User is already deactivated"))
+                .when(userService).deactivateUser(1L);
 
-        mockMvc.perform(patch("/api/customers/1/deactivate"))
+        mockMvc.perform(patch("/api/users/1/deactivate"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    void deactivateCustomer_notFound_returns404() throws Exception {
+    void deactivateUser_notFound_returns404() throws Exception {
         org.mockito.Mockito.doThrow(new ResourceNotFoundException("User not found"))
-                .when(customerService).deactivateCustomer(404L);
+                .when(userService).deactivateUser(404L);
 
-        mockMvc.perform(patch("/api/customers/404/deactivate"))
+        mockMvc.perform(patch("/api/users/404/deactivate"))
                 .andExpect(status().isNotFound());
     }
 }

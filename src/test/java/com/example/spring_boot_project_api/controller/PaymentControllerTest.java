@@ -13,20 +13,26 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.example.spring_boot_project_api.config.JwtTokenProvider;
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.enums.PaymentMethod;
 import com.example.spring_boot_project_api.enums.PaymentStatus;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
+import com.example.spring_boot_project_api.model.User;
+import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.PaymentService;
 
 @WebMvcTest(PaymentController.class)
@@ -39,10 +45,31 @@ class PaymentControllerTest {
     @MockitoBean
     private PaymentService paymentService;
 
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private void authenticateUser(Long id) {
+        User principal = new User();
+        principal.setId(id);
+        principal.setName("Chan Dara");
+        principal.setEmail("dara@example.com");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, List.of()));
+    }
+
     private PaymentResponse paymentResponse() {
         PaymentResponse response = new PaymentResponse();
         response.setId(1L);
         response.setOrderId(10L);
+        response.setOrderUserId(10L);
         response.setPaymentMethod(PaymentMethod.ABA);
         response.setAmount(new BigDecimal("59.50"));
         response.setStatus(PaymentStatus.PENDING);
@@ -249,6 +276,7 @@ class PaymentControllerTest {
 
     @Test
     void getPaymentHistoryByOrder_returnsList() throws Exception {
+        authenticateUser(10L);
         when(paymentService.getPaymentHistoryByOrder(10L)).thenReturn(List.of(paymentResponse()));
 
         mockMvc.perform(get("/api/payments/history/order/10"))
@@ -258,6 +286,7 @@ class PaymentControllerTest {
 
     @Test
     void getPaymentHistoryByOrder_emptyList() throws Exception {
+        authenticateUser(10L);
         when(paymentService.getPaymentHistoryByOrder(10L)).thenReturn(List.of());
 
         mockMvc.perform(get("/api/payments/history/order/10"))

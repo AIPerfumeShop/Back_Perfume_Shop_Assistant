@@ -28,6 +28,8 @@ import com.example.spring_boot_project_api.dto.response.review.AdminReviewSummar
 import com.example.spring_boot_project_api.dto.response.review.ReviewResponse;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
+import com.example.spring_boot_project_api.config.JwtTokenProvider;
+import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.ReviewService;
 
 @WebMvcTest(AdminReviewController.class)
@@ -39,6 +41,12 @@ class AdminReviewControllerTest {
 
     @MockitoBean
     private ReviewService reviewService;
+
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     private ReviewResponse reviewResponse() {
         ReviewResponse response = new ReviewResponse();

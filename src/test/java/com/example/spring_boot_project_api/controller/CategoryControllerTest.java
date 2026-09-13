@@ -27,6 +27,8 @@ import com.example.spring_boot_project_api.dto.request.category.UpdateCategoryRe
 import com.example.spring_boot_project_api.dto.response.category.CategoryResponse;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
+import com.example.spring_boot_project_api.config.JwtTokenProvider;
+import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.CategoryService;
 
 @WebMvcTest(CategoryController.class)
@@ -38,6 +40,12 @@ class CategoryControllerTest {
 
     @MockitoBean
     private CategoryService categoryService;
+
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     private CategoryResponse categoryResponse() {
         CategoryResponse response = new CategoryResponse();

@@ -19,6 +19,8 @@ import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequ
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.product.ProductResponse;
 import com.example.spring_boot_project_api.enums.Gender;
+import com.example.spring_boot_project_api.config.JwtTokenProvider;
+import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.ProductService;
 
 @WebMvcTest(ProductController.class)
@@ -30,6 +32,12 @@ class ProductControllerTest {
 
     @MockitoBean
     private ProductService productService;
+
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     private ProductResponse productResponse() {
         ProductResponse response = new ProductResponse();

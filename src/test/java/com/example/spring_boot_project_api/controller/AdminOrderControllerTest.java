@@ -29,6 +29,8 @@ import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.enums.OrderStatus;
 import com.example.spring_boot_project_api.exception.InvalidOrderException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
+import com.example.spring_boot_project_api.config.JwtTokenProvider;
+import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.OrderService;
 
 @WebMvcTest(AdminOrderController.class)
@@ -40,6 +42,12 @@ class AdminOrderControllerTest {
 
     @MockitoBean
     private OrderService orderService;
+
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     private OrderResponse orderResponse() {
         OrderResponse response = new OrderResponse();
