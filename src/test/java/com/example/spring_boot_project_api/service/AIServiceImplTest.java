@@ -5,12 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,6 +30,7 @@ import com.example.spring_boot_project_api.model.AIMessage;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.AIConversationRepository;
 import com.example.spring_boot_project_api.repository.AIMessageRepository;
+import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.impl.AIServiceImpl;
 
@@ -44,6 +47,9 @@ class AIServiceImplTest {
     private UserRepository userRepository;
 
     @Mock
+    private ProductRepository productRepository;
+
+    @Mock
     private AIMapper aiMapper;
 
     @Mock
@@ -51,6 +57,11 @@ class AIServiceImplTest {
 
     @InjectMocks
     private AIServiceImpl aiService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(productRepository.findAll()).thenReturn(List.of());
+    }
 
     private User user(Long id) {
         User user = new User();
@@ -83,7 +94,7 @@ class AIServiceImplTest {
                 .thenReturn(userMsg);
         when(aiMessageRepository.findByConversationIdOrderByCreatedAtAsc(1L))
                 .thenReturn(List.of(userMsg));
-        when(openRouterService.generateResponse(any())).thenReturn("Hello");
+        when(openRouterService.generateResponse(any(), any())).thenReturn("Hello");
 
         AIMessage aiMsg = new AIMessage();
         aiMsg.setId(22L);
@@ -137,11 +148,11 @@ class AIServiceImplTest {
                 .thenReturn(List.of(userMsg));
 
         doAnswer(inv -> {
-            Consumer<String> onToken = inv.getArgument(1);
+            Consumer<String> onToken = inv.getArgument(2);
             onToken.accept("Hello");
             onToken.accept(" world");
             return null;
-        }).when(openRouterService).streamGenerateResponse(any(), any());
+        }).when(openRouterService).streamGenerateResponse(any(), any(), any());
 
         AIMessage aiMsg = new AIMessage();
         aiMsg.setId(33L);
@@ -177,7 +188,7 @@ class AIServiceImplTest {
                 .thenReturn(userMsg);
         when(aiMessageRepository.findByConversationIdOrderByCreatedAtAsc(1L))
                 .thenReturn(List.of(userMsg));
-        doAnswer(inv -> null).when(openRouterService).streamGenerateResponse(any(), any());
+        doAnswer(inv -> null).when(openRouterService).streamGenerateResponse(any(), any(), any());
 
         assertThrows(AIServiceException.class, () ->
                 aiService.streamChat(1L, chatRequest("Hi"), token -> { }));

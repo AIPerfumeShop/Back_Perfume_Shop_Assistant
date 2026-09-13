@@ -63,15 +63,18 @@ public class OpenRouterServiceImpl implements OpenRouterService {
                 .build();
     }
 
-    private List<OpenRouterMessage> withSystemPrompt(List<OpenRouterMessage> messages) {
-        List<OpenRouterMessage> all = new ArrayList<>(messages.size() + 1);
+    private List<OpenRouterMessage> withSystemPrompt(String productCatalog, List<OpenRouterMessage> messages) {
+        List<OpenRouterMessage> all = new ArrayList<>(messages.size() + 2);
         all.add(new OpenRouterMessage("system", systemPrompt));
+        if (productCatalog != null && !productCatalog.isBlank()) {
+            all.add(new OpenRouterMessage("system", productCatalog));
+        }
         all.addAll(messages);
         return all;
     }
 
     @Override
-    public String generateResponse(List<AIMessage> messages) {
+    public String generateResponse(List<AIMessage> messages, String productCatalog) {
         try {
             // Convert AIMessage -> OpenRouterMessage
             List<OpenRouterMessage> openRouterMessages = messages.stream()
@@ -90,7 +93,7 @@ public class OpenRouterServiceImpl implements OpenRouterService {
             // Create OpenRouter request
             OpenRouterRequest request = new OpenRouterRequest(
                     model,
-                    withSystemPrompt(openRouterMessages));
+                    withSystemPrompt(productCatalog, openRouterMessages));
 
             // Send request to OpenRouter
             OpenRouterResponse response = restClient.post()
@@ -132,7 +135,7 @@ public class OpenRouterServiceImpl implements OpenRouterService {
     }
 
     @Override
-    public void streamGenerateResponse(List<AIMessage> messages, Consumer<String> onToken) {
+    public void streamGenerateResponse(List<AIMessage> messages, String productCatalog, Consumer<String> onToken) {
         try {
             List<OpenRouterMessage> openRouterMessages = messages.stream()
                     .map(message -> {
@@ -143,7 +146,7 @@ public class OpenRouterServiceImpl implements OpenRouterService {
                     })
                     .toList();
 
-            OpenRouterRequest request = new OpenRouterRequest(model, withSystemPrompt(openRouterMessages), true);
+            OpenRouterRequest request = new OpenRouterRequest(model, withSystemPrompt(productCatalog, openRouterMessages), true);
 
             restClient.post()
                     .contentType(MediaType.APPLICATION_JSON)

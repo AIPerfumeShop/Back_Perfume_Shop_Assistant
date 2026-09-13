@@ -6,7 +6,7 @@ import java.util.function.Consumer;
 import com.example.spring_boot_project_api.model.AIMessage;
 
 public interface OpenRouterService {
-    String generateResponse(List<AIMessage> messages);
+    String generateResponse(List<AIMessage> messages, String productCatalog);
 
-    void streamGenerateResponse(List<AIMessage> messages, Consumer<String> onToken);
+    void streamGenerateResponse(List<AIMessage> messages, String productCatalog, Consumer<String> onToken);
 }
