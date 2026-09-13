@@ -58,7 +58,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<AIRecommendationResponse> recommend(Long userId, AIRecommendationRequest request) {
         final AIRecommendationRequest req = request == null ? new AIRecommendationRequest() : request;
         int limit = req.getLimit() == null ? 5 : req.getLimit();
