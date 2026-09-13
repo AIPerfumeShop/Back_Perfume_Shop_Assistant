@@ -2,6 +2,8 @@ package com.example.spring_boot_project_api.controller;
 
 import java.util.List;
 
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -12,12 +14,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.order.CancelOrderRequest;
 import com.example.spring_boot_project_api.dto.request.order.CheckoutRequest;
 import com.example.spring_boot_project_api.dto.request.order.CreateOrderRequest;
 import com.example.spring_boot_project_api.dto.request.order.UpdateOrderStatusRequest;
+import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
@@ -96,12 +100,22 @@ public class OrderController {
         @ApiResponse(responseCode = "200", description = "Orders retrieved successfully")
     })
     @GetMapping("/user/me")
-    public ResponseEntity<List<OrderResponse>> getUserOrders() {
+    public ResponseEntity<PagedResponse<OrderResponse>> getUserOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         Long userId = SecurityUtils.currentUserId()
                 .orElseThrow(() ->
                         new UnauthorizedException("Authentication required"));
-        List<OrderResponse> response = orderService.getUserOrders(userId);
+        PagedResponse<OrderResponse> response = orderService.getUserOrders(
+                userId, buildUserOrdersPageRequest(page, size));
         return ResponseEntity.ok(response);
+    }
+
+    private PageRequest buildUserOrdersPageRequest(int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        return PageRequest.of(safePage, safeSize,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
     }
 
     //Get all orders (admin)

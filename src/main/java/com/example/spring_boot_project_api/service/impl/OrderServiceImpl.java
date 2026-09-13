@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -108,14 +109,19 @@ public class OrderServiceImpl implements OrderService {
     //Get all orders of a user
     @Override
     @Transactional(readOnly = true)
-    public List<OrderResponse> getUserOrders(Long userId) {
+    public PagedResponse<OrderResponse> getUserOrders(Long userId, Pageable pageable) {
         userRepository.findById(userId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("User not found"));
 
-        return orderMapper.toResponseList(
-                orderRepository.findByUserIdOrderByCreatedAtDesc(userId)
-        );
+        Page<Order> orders = orderRepository.findByUserId(userId, pageable);
+
+        return new PagedResponse<>(
+                orderMapper.toResponseList(orders.getContent()),
+                orders.getTotalElements(),
+                orders.getTotalPages(),
+                orders.getNumber(),
+                orders.getSize());
     }
 
     //Get all orders (admin)

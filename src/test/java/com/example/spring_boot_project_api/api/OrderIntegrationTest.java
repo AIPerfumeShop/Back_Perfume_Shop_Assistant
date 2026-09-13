@@ -255,8 +255,9 @@ class OrderIntegrationTest {
 
         mockMvc.perform(get("/api/orders/user/me").header("Authorization", bearer(customer)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].userId").value(customer.getId().intValue()));
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].userId").value(customer.getId().intValue()))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test

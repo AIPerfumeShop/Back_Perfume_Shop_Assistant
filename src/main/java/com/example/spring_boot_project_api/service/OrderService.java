@@ -2,6 +2,8 @@ package com.example.spring_boot_project_api.service;
 
 import java.util.List;
 
+import org.springframework.data.domain.Pageable;
+
 import com.example.spring_boot_project_api.dto.request.order.CreateOrderRequest;
 import com.example.spring_boot_project_api.dto.request.order.OrderFilterRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
@@ -23,7 +25,7 @@ public interface OrderService {
     CheckoutResponse checkout(Long userId, CheckoutRequest request);
 
     //Get all orders of a user
-    List<OrderResponse> getUserOrders(Long userId);
+    PagedResponse<OrderResponse> getUserOrders(Long userId, Pageable pageable);
 
     //Get all orders (admin)
     List<OrderResponse> getAllOrders();

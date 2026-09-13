@@ -592,7 +592,12 @@ public class CustomerCareServiceImpl implements CustomerCareService {
     private OrderLookup resolveOrderLookup(Long userId, String text) {
         Long orderId = extractOrderId(text);
         if (orderId == null) {
-            List<OrderResponse> orders = orderService.getUserOrders(userId);
+            List<OrderResponse> orders = orderService.getUserOrders(
+                            userId,
+                            PageRequest.of(0, 50,
+                                    Sort.by(Sort.Order.desc("createdAt"),
+                                            Sort.Order.desc("id"))))
+                    .getData();
             if (orders == null || orders.isEmpty()) {
                 return new OrderLookup("The customer has no orders yet.", false);
             }
