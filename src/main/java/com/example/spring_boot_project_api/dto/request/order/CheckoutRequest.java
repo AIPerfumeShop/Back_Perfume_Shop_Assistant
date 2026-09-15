@@ -10,5 +10,9 @@ public class CheckoutRequest extends CreateOrderRequest {
 
     @NotBlank(message = "Payment method is required")
     private String paymentMethod;
-    
+
+    //City/province of the delivery address. Used to gate payment methods
+    //that are only offered in certain locations (e.g. CASH in Phnom Penh).
+    private String city;
+
 }

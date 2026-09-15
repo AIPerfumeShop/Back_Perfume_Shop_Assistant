@@ -251,6 +251,13 @@ public class OrderServiceImpl implements OrderService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        //Cash on delivery is only available in Phnom Penh.
+        if ("CASH".equalsIgnoreCase(request.getPaymentMethod())
+                && !isPhnomPenh(request.getCity())) {
+            throw new InvalidOrderException(
+                    "Cash on delivery is only available in Phnom Penh");
+        }
+
         //Idempotency guard: if the same user just placed an identical
         //checkout, return the existing pending order instead of creating
         //a duplicate order + payment (double-tap protection).
@@ -383,6 +390,15 @@ public class OrderServiceImpl implements OrderService {
         return "KHQR".equals(normalized)
                 || "ABA".equals(normalized)
                 || "ACLEDA".equals(normalized);
+    }
+
+    private boolean isPhnomPenh(String city) {
+        if (city == null) return false;
+        String normalized = city.trim().toLowerCase();
+        return normalized.contains("phnom penh")
+                || normalized.equals("phnompenh")
+                || normalized.equals("pp")
+                || normalized.equals("ភ្នំពេញ");
     }
 
     //Build a single order item from request, snapshotting the variant data

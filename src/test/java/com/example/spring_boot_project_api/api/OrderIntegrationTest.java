@@ -174,7 +174,8 @@ class OrderIntegrationTest {
 
     @Test
     void checkout_withCash_createsSuccessfulPayment() throws Exception {
-        String payload = orderPayload(2).replace("}", ",\"paymentMethod\":\"CASH\"}");
+        String payload = orderPayload(2).replace("}",
+                ",\"city\":\"Phnom Penh\",\"paymentMethod\":\"CASH\"}");
 
         mockMvc.perform(post("/api/orders/checkout")
                         .header("Authorization", bearer(customer))
@@ -188,8 +189,21 @@ class OrderIntegrationTest {
     }
 
     @Test
+    void checkout_withCash_outsidePhnomPenh_isRejected() throws Exception {
+        String payload = orderPayload(1).replace("}",
+                ",\"city\":\"Siem Reap\",\"paymentMethod\":\"CASH\"}");
+
+        mockMvc.perform(post("/api/orders/checkout")
+                        .header("Authorization", bearer(customer))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void checkout_duplicateWithinWindow_returnsSameOrderAndPayment() throws Exception {
-        String payload = orderPayload(2).replace("}", ",\"paymentMethod\":\"CASH\"}");
+        String payload = orderPayload(2).replace("}",
+                ",\"city\":\"Phnom Penh\",\"paymentMethod\":\"CASH\"}");
 
         String first = mockMvc.perform(post("/api/orders/checkout")
                         .header("Authorization", bearer(customer))
@@ -219,7 +233,8 @@ class OrderIntegrationTest {
 
     @Test
     void checkout_paymentProcess_isIdempotent() throws Exception {
-        String payload = orderPayload(2).replace("}", ",\"paymentMethod\":\"CASH\"}");
+        String payload = orderPayload(2).replace("}",
+                ",\"city\":\"Phnom Penh\",\"paymentMethod\":\"CASH\"}");
 
         String created = mockMvc.perform(post("/api/orders/checkout")
                         .header("Authorization", bearer(customer))
