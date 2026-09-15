@@ -46,8 +46,8 @@ public class BakongPaymentReconciliation {
     }
 
     @Scheduled(
-            fixedDelayString = "${payment.bakong.poll-interval-ms:15000}",
-            initialDelayString = "${payment.bakong.initial-delay-ms:30000}")
+            fixedDelayString = "${payment.bakong.poll-interval-ms:8000}",
+            initialDelayString = "${payment.bakong.initial-delay-ms:5000}")
     public void reconcile() {
         if (!bakongProperties.isConfigured()) {
             log.debug("Bakong not configured; skipping KHQR reconciliation");
@@ -57,12 +57,20 @@ public class BakongPaymentReconciliation {
         List<Payment> pending = paymentRepository
                 .findAllByStatusAndMd5IsNotNull(PaymentStatus.PENDING);
 
+        log.debug("KHQR reconciliation: checking {} pending payment(s)", pending.size());
+
         for (Payment payment : pending) {
             try {
+                log.debug("Verifying payment {} (order {}, md5={})",
+                        payment.getId(),
+                        payment.getOrder() != null ? payment.getOrder().getId() : "null",
+                        payment.getMd5() != null ? payment.getMd5().substring(0, Math.min(8, payment.getMd5().length())) + "..." : "null");
+
                 PaymentResponse verified = paymentService
                         .verifyBakongPayment(payment.getId());
 
                 if (verified.getStatus() == PaymentStatus.SUCCESSFUL) {
+                    log.info("Payment {} confirmed as SUCCESSFUL", payment.getId());
                     continue;
                 }
 
@@ -73,7 +81,7 @@ public class BakongPaymentReconciliation {
                      | BadRequestException
                      | RestClientException ex) {
                 log.warn("KHQR verification failed for payment {}: {}",
-                        payment.getId(), ex.getMessage());
+                        payment.getId(), ex.getMessage(), ex);
             }
         }
     }

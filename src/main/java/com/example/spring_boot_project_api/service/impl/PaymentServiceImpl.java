@@ -275,8 +275,17 @@ public class PaymentServiceImpl implements PaymentService {
                     "Payment has no KHQR code attached");
         }
 
+        log.info("Verifying payment {} with Bakong API (md5={})",
+                paymentId, payment.getMd5() != null ? payment.getMd5().substring(0, Math.min(8, payment.getMd5().length())) + "..." : "null");
+
         BakongResponse bakongResponse = bakongService.checkTransactionByMD5(
                 new CheckTransactionRequest(payment.getMd5()));
+
+        log.info("Bakong API response for payment {}: success={}, responseCode={}, data={}",
+                paymentId,
+                bakongResponse != null ? bakongResponse.isSuccess() : "null",
+                bakongResponse != null ? bakongResponse.responseCode() : "null",
+                bakongResponse != null ? bakongResponse.data() : "null");
 
         if (bakongResponse != null && bakongResponse.isSuccess()) {
             LocalDateTime paidAt = LocalDateTime.now();
