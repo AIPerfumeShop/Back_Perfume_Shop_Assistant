@@ -129,6 +129,19 @@ public class GlobalExceptionHandler {
                 .body(error);
     }
 
+    //Bakong/KHQR gateway error
+    @ExceptionHandler(BakongException.class)
+    public ResponseEntity<ErrorResponse> handleBakong(BakongException ex){
+        ErrorResponse error = new ErrorResponse(
+            HttpStatus.BAD_GATEWAY.value(),
+            ex.getMessage(),
+            LocalDateTime.now()
+        );
+        return ResponseEntity
+                .status(HttpStatus.BAD_GATEWAY)
+                .body(error);
+    }
+
     //Upload Storage 400
     @ExceptionHandler(UploadStorageException.class)
     public ResponseEntity<ErrorResponse> handleUploadStorage(UploadStorageException ex){

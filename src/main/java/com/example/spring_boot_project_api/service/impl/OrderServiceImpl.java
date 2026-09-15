@@ -387,9 +387,7 @@ public class OrderServiceImpl implements OrderService {
     private boolean isKHQR(String paymentMethod) {
         if (paymentMethod == null) return false;
         String normalized = paymentMethod.trim().toUpperCase();
-        return "KHQR".equals(normalized)
-                || "ABA".equals(normalized)
-                || "ACLEDA".equals(normalized);
+        return "KHQR".equals(normalized);
     }
 
     private boolean isPhnomPenh(String city) {
