@@ -47,7 +47,7 @@ class BakongPaymentReconciliationTest {
     void setUp() {
         reconciliation = new BakongPaymentReconciliation(
                 paymentRepository, paymentService, orderService,
-                bakongProperties, 15L);
+                bakongProperties, 15L, 60_000L);
     }
 
     @Test
@@ -113,6 +113,25 @@ class BakongPaymentReconciliationTest {
 
         assertEquals(PaymentStatus.PENDING, payment.getStatus());
         verify(orderService, never()).cancelOrderAdmin(anyLong(), anyString());
+    }
+
+    @Test
+    void reconcile_throttlesRepeatedChecksWithinWindow() {
+        Payment payment = pendingPayment(10L, 5);
+        PaymentResponse pending = new PaymentResponse();
+        pending.setStatus(PaymentStatus.PENDING);
+
+        when(bakongProperties.isConfigured()).thenReturn(true);
+        when(paymentRepository.findAllByStatusAndMd5IsNotNull(
+                PaymentStatus.PENDING)).thenReturn(List.of(payment));
+        when(paymentService.verifyBakongPayment(1L)).thenReturn(pending);
+
+        reconciliation.reconcile();
+        reconciliation.reconcile();
+
+        // Second run within the 60s throttle window must not hit Bakong again.
+        verify(paymentService, org.mockito.Mockito.times(1))
+                .verifyBakongPayment(1L);
     }
 
     @Test

@@ -1,7 +1,11 @@
 package com.example.spring_boot_project_api.service.impl;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,18 +35,23 @@ public class BakongPaymentReconciliation {
     private final OrderService orderService;
     private final BakongProperties bakongProperties;
     private final long expiryMinutes;
+    private final long minCheckIntervalMs;
+    private final Map<Long, Instant> lastChecked = new ConcurrentHashMap<>();
 
     public BakongPaymentReconciliation(PaymentRepository paymentRepository,
                                        PaymentService paymentService,
                                        OrderService orderService,
                                        BakongProperties bakongProperties,
                                        @Value("${payment.bakong.payment-expiry-minutes:15}")
-                                       long expiryMinutes) {
+                                       long expiryMinutes,
+                                       @Value("${payment.bakong.min-check-interval-ms:60000}")
+                                       long minCheckIntervalMs) {
         this.paymentRepository = paymentRepository;
         this.paymentService = paymentService;
         this.orderService = orderService;
         this.bakongProperties = bakongProperties;
         this.expiryMinutes = expiryMinutes;
+        this.minCheckIntervalMs = minCheckIntervalMs;
     }
 
     @Scheduled(
@@ -61,6 +70,16 @@ public class BakongPaymentReconciliation {
 
         for (Payment payment : pending) {
             try {
+                // Bakong has a daily API budget (100 checks/day).
+                // Never hit it more than once per payment per throttle window.
+                Instant checkedAt = lastChecked.get(payment.getId());
+                if (checkedAt != null
+                        && Duration.between(checkedAt, Instant.now()).toMillis()
+                                < minCheckIntervalMs) {
+                    continue;
+                }
+                lastChecked.put(payment.getId(), Instant.now());
+
                 log.debug("Verifying payment {} (order {}, md5={})",
                         payment.getId(),
                         payment.getOrder() != null ? payment.getOrder().getId() : "null",
@@ -70,6 +89,7 @@ public class BakongPaymentReconciliation {
                         .verifyBakongPayment(payment.getId());
 
                 if (verified.getStatus() == PaymentStatus.SUCCESSFUL) {
+                    lastChecked.remove(payment.getId());
                     log.info("Payment {} confirmed as SUCCESSFUL", payment.getId());
                     continue;
                 }
