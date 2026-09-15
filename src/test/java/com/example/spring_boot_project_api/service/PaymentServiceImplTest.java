@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -72,7 +73,7 @@ class PaymentServiceImplTest {
         Payment payment = new Payment();
         payment.setId(1L);
         payment.setOrder(order);
-        payment.setPaymentMethod(PaymentMethod.ABA);
+        payment.setPaymentMethod(PaymentMethod.CASH);
         payment.setAmount(order.getTotalAmount());
         payment.setStatus(status);
         payment.setTransactionId("txn-123");
@@ -107,13 +108,13 @@ class PaymentServiceImplTest {
 
         PaymentRequest request = new PaymentRequest();
         request.setOrderId(10L);
-        request.setPaymentMethod("aba");
+        request.setPaymentMethod("cash");
 
         PaymentResponse response = paymentService.createPayment(request);
 
         assertNotNull(response);
         assertEquals(10L, response.getOrderId());
-        assertEquals(PaymentMethod.ABA, response.getPaymentMethod());
+        assertEquals(PaymentMethod.CASH, response.getPaymentMethod());
         assertEquals(PaymentStatus.PENDING, response.getStatus());
         assertNotNull(response.getTransactionId());
     }
@@ -134,7 +135,7 @@ class PaymentServiceImplTest {
 
         PaymentRequest request = new PaymentRequest();
         request.setOrderId(999L);
-        request.setPaymentMethod("ABA");
+        request.setPaymentMethod("CASH");
 
         assertThrows(ResourceNotFoundException.class,
                 () -> paymentService.createPayment(request));
@@ -293,7 +294,8 @@ class PaymentServiceImplTest {
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(bakongService.checkTransactionByMD5(any()))
                 .thenReturn(new BakongResponse(0, "Success", null, data));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentRepository.transitionFromPendingToSuccessful(
+                eq(1L), any(), any(), any())).thenReturn(1);
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
         when(paymentMapper.toResponse(payment)).thenAnswer(inv -> toResponse(payment));
 
@@ -314,7 +316,6 @@ class PaymentServiceImplTest {
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(bakongService.checkTransactionByMD5(any()))
                 .thenReturn(new BakongResponse(1, "Not found", 1, null));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         when(paymentMapper.toResponse(payment)).thenAnswer(inv -> toResponse(payment));
 
         PaymentResponse result = paymentService.verifyBakongPayment(1L);
