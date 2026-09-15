@@ -64,4 +64,9 @@ public interface PaymentService {
      * List the payment history for a given user.
      */
     List<PaymentResponse> getPaymentHistoryByUser(Long userId);
+
+    /**
+     * Admin: manually update a payment's status (e.g. mark as SUCCESSFUL or FAILED).
+     */
+    PaymentResponse updatePaymentStatus(Long paymentId, String status, String reason);
 }

@@ -17,7 +17,9 @@ import com.example.spring_boot_project_api.dto.request.order.UpdateOrderStatusRe
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.order.AdminOrderSummaryResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
+import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.service.OrderService;
+import com.example.spring_boot_project_api.service.PaymentService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -31,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AdminOrderController {
     private final OrderService orderService;
+    private final PaymentService paymentService;
 
     //Get all orders with filters + pagination
     @Operation(summary = "Get all orders with filtering and pagination (admin)")
@@ -87,5 +90,18 @@ public class AdminOrderController {
         OrderResponse response =
                 orderService.cancelOrderAdmin(id, request == null ? null : request.getReason());
         return ResponseEntity.ok(response);
+    }
+
+    //Get payment for an order (admin)
+    @Operation(summary = "Get payment details for an order (admin)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Payment retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Order or payment not found")
+    })
+    @GetMapping("/{id}/payment")
+    public ResponseEntity<java.util.List<PaymentResponse>> getOrderPayment(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(
+                paymentService.getPaymentHistoryByOrder(id));
     }
 }

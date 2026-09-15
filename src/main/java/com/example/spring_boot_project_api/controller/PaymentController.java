@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
+import com.example.spring_boot_project_api.dto.request.payment.PaymentStatusUpdateRequest;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
@@ -189,5 +191,20 @@ public class PaymentController {
             @PathVariable Long userId) {
         return ResponseEntity.ok(
                 paymentService.getPaymentHistoryByUser(userId));
+    }
+
+    //Admin: update payment status
+    @Operation(summary = "Admin: manually update a payment status")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Payment status updated"),
+        @ApiResponse(responseCode = "400", description = "Invalid status"),
+        @ApiResponse(responseCode = "404", description = "Payment not found")
+    })
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<PaymentResponse> updatePaymentStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody PaymentStatusUpdateRequest request) {
+        return ResponseEntity.ok(
+                paymentService.updatePaymentStatus(id, request.getStatus(), request.getReason()));
     }
 }

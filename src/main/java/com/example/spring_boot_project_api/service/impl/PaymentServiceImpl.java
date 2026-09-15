@@ -364,4 +364,54 @@ public class PaymentServiceImpl implements PaymentService {
                                     .toList()));
         }
     }
+
+    @Override
+    public PaymentResponse updatePaymentStatus(Long paymentId, String status, String reason) {
+        Payment payment = findPayment(paymentId);
+
+        PaymentStatus newStatus;
+        try {
+            newStatus = PaymentStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException(
+                    "Invalid payment status: " + status
+                            + ". Allowed values: SUCCESSFUL, FAILED, REFUNDED");
+        }
+
+        if (newStatus != PaymentStatus.SUCCESSFUL
+                && newStatus != PaymentStatus.FAILED
+                && newStatus != PaymentStatus.REFUNDED) {
+            throw new BadRequestException(
+                    "Only terminal statuses (SUCCESSFUL, FAILED, REFUNDED) can be set manually");
+        }
+
+        PaymentStatus oldStatus = payment.getStatus();
+        if (oldStatus == newStatus) {
+            return paymentMapper.toResponse(payment);
+        }
+
+        payment.setStatus(newStatus);
+        if (newStatus == PaymentStatus.SUCCESSFUL) {
+            payment.setPaidAt(LocalDateTime.now());
+            payment.setErrorMessage(null);
+
+            Order order = payment.getOrder();
+            if (order != null && order.getStatus() != OrderStatus.PAID) {
+                OrderStatus orderOldStatus = order.getStatus();
+                order.setStatus(OrderStatus.PAID);
+                orderRepository.save(order);
+                notificationService.orderStatusChanged(order, orderOldStatus, OrderStatus.PAID,
+                        reason != null ? reason : "Payment confirmed by admin");
+            }
+        } else {
+            payment.setErrorMessage(reason);
+        }
+
+        paymentRepository.save(payment);
+
+        log.info("Admin updated payment {} status: {} -> {} (reason: {})",
+                paymentId, oldStatus, newStatus, reason);
+
+        return paymentMapper.toResponse(findPayment(paymentId));
+    }
 }
