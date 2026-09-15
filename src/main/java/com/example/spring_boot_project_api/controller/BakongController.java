@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.spring_boot_project_api.dto.request.bakong.BakongRequest;
 import com.example.spring_boot_project_api.dto.request.bakong.CheckTransactionRequest;
+import com.example.spring_boot_project_api.dto.request.bakong.QRImageRequest;
 import com.example.spring_boot_project_api.dto.response.bakong.BakongResponse;
 import com.example.spring_boot_project_api.service.BakongService;
 
@@ -33,8 +34,10 @@ public class BakongController {
     }
 
     @PostMapping("/get-qr-image")
-    public ResponseEntity<byte[]> getQRImage(@RequestBody KHQRData qr) {
-        byte[] imageBytes = bakongService.getQRImage(qr);
+    public ResponseEntity<byte[]> getQRImage(@Valid @RequestBody QRImageRequest request) {
+        KHQRData qrData = new KHQRData();
+        qrData.setQr(request.getQr());
+        byte[] imageBytes = bakongService.getQRImage(qrData);
 
         return ResponseEntity
                 .ok()
