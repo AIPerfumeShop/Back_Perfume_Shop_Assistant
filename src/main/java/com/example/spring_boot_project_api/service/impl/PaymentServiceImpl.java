@@ -28,6 +28,7 @@ import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.service.BakongService;
+import com.example.spring_boot_project_api.service.NotificationService;
 import com.example.spring_boot_project_api.service.PaymentService;
 import com.example.spring_boot_project_api.service.TelegramService;
 
@@ -44,19 +45,22 @@ public class PaymentServiceImpl implements PaymentService {
     private final BakongService bakongService;
     private final TelegramService telegramService;
     private final BakongProperties bakongProperties;
+    private final NotificationService notificationService;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               OrderRepository orderRepository,
                               PaymentMapper paymentMapper,
                               BakongService bakongService,
                               TelegramService telegramService,
-                              BakongProperties bakongProperties) {
+                              BakongProperties bakongProperties,
+                              NotificationService notificationService) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.paymentMapper = paymentMapper;
         this.bakongService = bakongService;
         this.telegramService = telegramService;
         this.bakongProperties = bakongProperties;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -286,8 +290,10 @@ public class PaymentServiceImpl implements PaymentService {
 
             Order order = payment.getOrder();
             if (order != null) {
+                OrderStatus oldStatus = order.getStatus();
                 order.setStatus(OrderStatus.PAID);
                 orderRepository.save(order);
+                notificationService.orderStatusChanged(order, oldStatus, OrderStatus.PAID, null);
             }
 
             paymentRepository.save(payment);

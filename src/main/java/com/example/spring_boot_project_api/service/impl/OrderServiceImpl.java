@@ -5,6 +5,8 @@ import com.example.spring_boot_project_api.dto.request.order.OrderFilterRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.order.AdminOrderSummaryResponse;
 import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
+import com.example.spring_boot_project_api.dto.response.order.OrderStatusHistoryResponse;
+import com.example.spring_boot_project_api.service.NotificationService;
 import com.example.spring_boot_project_api.service.PaymentService;
 
 import java.math.BigDecimal;
@@ -32,6 +34,7 @@ import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.OrderRepository;
+import com.example.spring_boot_project_api.repository.OrderStatusHistoryRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
@@ -44,27 +47,35 @@ public class OrderServiceImpl implements OrderService {
     //Window (seconds) within which an identical checkout from the same user
     //is considered a duplicate and returns the existing order.
     private static final long DUPLICATE_GUARD_WINDOW_SECONDS = 30;
+    //Below this stock level an admin low-stock alert is fired.
+    private static final int LOW_STOCK_THRESHOLD = 5;
 
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final ProductVariantRepository productVariantRepository;
     private final PaymentRepository paymentRepository;
+    private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final OrderMapper orderMapper;
     private final PaymentService paymentService;
+    private final NotificationService notificationService;
 
     public OrderServiceImpl(
             OrderRepository orderRepository,
             UserRepository userRepository,
             ProductVariantRepository productVariantRepository,
             PaymentRepository paymentRepository,
+            OrderStatusHistoryRepository orderStatusHistoryRepository,
             OrderMapper orderMapper,
-            PaymentService paymentService) {
+            PaymentService paymentService,
+            NotificationService notificationService) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.productVariantRepository = productVariantRepository;
         this.paymentRepository = paymentRepository;
+        this.orderStatusHistoryRepository = orderStatusHistoryRepository;
         this.orderMapper = orderMapper;
         this.paymentService = paymentService;
+        this.notificationService = notificationService;
     }
 
     //Create order
@@ -91,6 +102,8 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalAmount(totalAmount);
 
         Order savedOrder = orderRepository.save(order);
+
+        notificationService.recordOrderPlaced(savedOrder);
 
         return orderMapper.toResponse(savedOrder);
     }
@@ -168,8 +181,9 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderResponse updateOrderStatus(Long orderId, OrderStatus status) {
         Order order = findOrder(orderId);
+        OrderStatus oldStatus = order.getStatus();
 
-        if (order.getStatus() == OrderStatus.CANCELLED &&
+        if (oldStatus == OrderStatus.CANCELLED &&
                 status != OrderStatus.CANCELLED) {
             throw new InvalidOrderException(
                     "Cancelled order cannot change status");
@@ -177,13 +191,15 @@ public class OrderServiceImpl implements OrderService {
 
         //Restore stock if order is being cancelled now
         if (status == OrderStatus.CANCELLED &&
-                order.getStatus() != OrderStatus.CANCELLED) {
+                oldStatus != OrderStatus.CANCELLED) {
             restoreStock(order);
         }
 
         order.setStatus(status);
 
-        return orderMapper.toResponse(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+        notificationService.orderStatusChanged(saved, oldStatus, status, null);
+        return orderMapper.toResponse(saved);
     }
 
     //Cancel an order
@@ -197,12 +213,16 @@ public class OrderServiceImpl implements OrderService {
             throw new InvalidOrderException("Order is already cancelled");
         }
 
+        OrderStatus oldStatus = order.getStatus();
+
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelReason(reason);
 
         restoreStock(order);
 
-        return orderMapper.toResponse(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+        notificationService.orderStatusChanged(saved, oldStatus, OrderStatus.CANCELLED, reason);
+        return orderMapper.toResponse(saved);
     }
 
     //Cancel an order (admin)
@@ -214,12 +234,16 @@ public class OrderServiceImpl implements OrderService {
             throw new InvalidOrderException("Order is already cancelled");
         }
 
+        OrderStatus oldStatus = order.getStatus();
+
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelReason(reason);
 
         restoreStock(order);
 
-        return orderMapper.toResponse(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+        notificationService.orderStatusChanged(saved, oldStatus, OrderStatus.CANCELLED, reason);
+        return orderMapper.toResponse(saved);
     }
 
     @Override
@@ -255,6 +279,8 @@ public class OrderServiceImpl implements OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
+        notificationService.recordOrderPlaced(savedOrder);
+
         // KHQR payments go through the Bakong gateway: generate a QR code and
         // leave both order and payment PENDING until the customer scans & pays.
         if (isKHQR(request.getPaymentMethod())) {
@@ -272,9 +298,11 @@ public class OrderServiceImpl implements OrderService {
         //Rollback if payment failed
         if (!paymentSuccess) {
             restoreStock(savedOrder);
+            OrderStatus oldStatus = savedOrder.getStatus();
             savedOrder.setStatus(OrderStatus.CANCELLED);
             savedOrder.setCancelReason("Payment failed");
-            orderRepository.save(savedOrder);
+            Order savedFailed = orderRepository.save(savedOrder);
+            notificationService.orderStatusChanged(savedFailed, oldStatus, OrderStatus.CANCELLED, "Payment failed");
         }
 
         return toCheckoutResponse(payment, savedOrder);
@@ -397,6 +425,13 @@ public class OrderServiceImpl implements OrderService {
         variant.setStock(variant.getStock() - quantity);
         productVariantRepository.save(variant);
 
+        if (variant.getStock() < LOW_STOCK_THRESHOLD) {
+            notificationService.stockAlert(
+                    variant.getId(),
+                    variant.getProduct() != null ? variant.getProduct().getName() : "Product",
+                    variant.getStock());
+        }
+
         return item;
     }
 
@@ -426,5 +461,32 @@ public class OrderServiceImpl implements OrderService {
             throw new ForbiddenException(
                     "You do not have access to this order");
         }
+    }
+
+    @Override
+    public boolean isOrderOwner(Long orderId, Long userId) {
+        return orderRepository.findById(orderId)
+                .map(order -> order.getUser().getId().equals(userId))
+                .orElse(false);
+    }
+
+    @Override
+    public List<OrderStatusHistoryResponse> getOrderStatusHistory(Long orderId, Long userId) {
+        Order order = findOrder(orderId);
+        if (userId != null) {
+            checkOwnership(order, userId);
+        }
+        return orderStatusHistoryRepository.findByOrderIdOrderByChangedAtAsc(orderId)
+                .stream()
+                .map(history -> {
+                    OrderStatusHistoryResponse response = new OrderStatusHistoryResponse();
+                    response.setId(history.getId());
+                    response.setOrderId(history.getOrder().getId());
+                    response.setStatus(history.getStatus());
+                    response.setNote(history.getNote());
+                    response.setChangedAt(history.getChangedAt());
+                    return response;
+                })
+                .toList();
     }
 }

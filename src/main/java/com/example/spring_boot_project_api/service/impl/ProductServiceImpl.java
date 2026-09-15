@@ -6,7 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +18,7 @@ import com.example.spring_boot_project_api.dto.request.product.ProductRequest;
 import com.example.spring_boot_project_api.dto.request.product.ProductStockRequest;
 import com.example.spring_boot_project_api.dto.request.product.ProductVariantRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
+import com.example.spring_boot_project_api.dto.response.inventory.InventoryItemResponse;
 import com.example.spring_boot_project_api.dto.response.product.ProductResponse;
 import com.example.spring_boot_project_api.enums.Gender;
 import com.example.spring_boot_project_api.enums.Intensity;
@@ -33,6 +37,7 @@ import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository.ProductRatingStat;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
 import com.example.spring_boot_project_api.repository.specification.ProductSpecification;
+import com.example.spring_boot_project_api.service.NotificationService;
 import com.example.spring_boot_project_api.service.ProductService;
 
 @Service
@@ -43,16 +48,22 @@ public class ProductServiceImpl implements ProductService {
     private final BrandRepository brandRepository;
     private final CategoryRepository categoryRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final NotificationService notificationService;
+
+    @Value("${inventory.low-stock-threshold:5}")
+    private int lowStockThreshold;
 
     public ProductServiceImpl(ProductRepository productRepository, ProductMapper productMapper,
                               BrandRepository brandRepository,
                               CategoryRepository categoryRepository,
-                              ProductVariantRepository productVariantRepository) {
+                              ProductVariantRepository productVariantRepository,
+                              NotificationService notificationService) {
         this.productRepository = productRepository;
         this.productMapper = productMapper;
         this.brandRepository = brandRepository;
         this.categoryRepository = categoryRepository;
         this.productVariantRepository = productVariantRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -197,9 +208,65 @@ public class ProductServiceImpl implements ProductService {
         variant.setStock(request.getStock());
         productVariantRepository.save(variant);
 
+        fireStockAlertIfNeeded(variant);
+
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with ID : " + productId));
         return productMapper.toResponse(product);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<InventoryItemResponse> getInventory(int page, int size, boolean lowStockOnly) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        PageRequest pageRequest = PageRequest.of(safePage, safeSize,
+                Sort.by(Sort.Order.asc("product.name"), Sort.Order.asc("sizeMl")));
+
+        Page<ProductVariant> variants = lowStockOnly
+                ? productVariantRepository.findByStockLessThan(lowStockThreshold, pageRequest)
+                : productVariantRepository.findAll(pageRequest);
+
+        List<InventoryItemResponse> content = variants.getContent().stream()
+                .map(this::toInventoryItem)
+                .toList();
+        return new PagedResponse<>(
+                content, variants.getTotalElements(),
+                variants.getTotalPages(), variants.getNumber(), variants.getSize());
+    }
+
+    void fireStockAlertIfNeeded(ProductVariant variant) {
+        if (variant == null || variant.getStock() == null
+                || variant.getStock() >= lowStockThreshold) {
+            return;
+        }
+        Product product = variant.getProduct();
+        String productName = product != null ? product.getName() : "Product";
+        notificationService.stockAlert(variant.getId(), productName, variant.getStock());
+    }
+
+    private InventoryItemResponse toInventoryItem(ProductVariant variant) {
+        InventoryItemResponse response = new InventoryItemResponse();
+        response.setVariantId(variant.getId());
+        Product product = variant.getProduct();
+        if (product != null) {
+            response.setProductId(product.getId());
+            response.setProductName(product.getName());
+            if (product.getBrand() != null) {
+                response.setBrand(product.getBrand().getName());
+            }
+            if (product.getImages() != null && !product.getImages().isEmpty()) {
+                response.setImageUrl(product.getImages().get(0).getImageUrl());
+            }
+        }
+        response.setSku(variant.getSku());
+        response.setSizeMl(variant.getSizeMl());
+        response.setPrice(variant.getPrice());
+        response.setStock(variant.getStock());
+        response.setIsActive(variant.getIsActive());
+        response.setLowStock(variant.getStock() != null
+                && variant.getStock() < lowStockThreshold);
+        return response;
     }
 
     private Category requireCategory(Long categoryId) {
@@ -234,9 +301,16 @@ public class ProductServiceImpl implements ProductService {
                         variant -> variant,
                         (first, second) -> first));
 
+        String productName = product.getName().trim();
+        String brandName = product.getBrand() != null && product.getBrand().getName() != null
+                ? product.getBrand().getName().trim()
+                : "";
+
         List<ProductVariant> kept = new ArrayList<>();
         for (ProductVariantRequest request : requests) {
-            String sku = request.getSku().trim();
+            String sku = request.getSku() == null || request.getSku().isBlank()
+                    ? productName + "-" + brandName + "-" + request.getSizeMl() + "ML"
+                    : request.getSku().trim();
             ProductVariant variant = existingBySku.remove(sku.toLowerCase());
 
             if (variant == null) {

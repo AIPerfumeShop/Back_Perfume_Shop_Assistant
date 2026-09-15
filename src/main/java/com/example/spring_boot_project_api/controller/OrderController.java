@@ -24,6 +24,7 @@ import com.example.spring_boot_project_api.dto.request.order.UpdateOrderStatusRe
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
+import com.example.spring_boot_project_api.dto.response.order.OrderStatusHistoryResponse;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.OrderService;
 import com.example.spring_boot_project_api.util.SecurityUtils;
@@ -92,6 +93,21 @@ public class OrderController {
                         new UnauthorizedException("Authentication required"));
         OrderResponse response = orderService.getOrderById(id, userId);
         return ResponseEntity.ok(response);
+    }
+
+    //Get order status history (timeline)
+    @Operation(summary = "Get order status history timeline")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "History retrieved successfully")
+    })
+    @GetMapping("/{id}/tracking")
+    public ResponseEntity<List<OrderStatusHistoryResponse>> getOrderTracking(
+            @PathVariable Long id) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
+        return ResponseEntity.ok(
+                orderService.getOrderStatusHistory(id, userId));
     }
 
     //Get all orders of a user

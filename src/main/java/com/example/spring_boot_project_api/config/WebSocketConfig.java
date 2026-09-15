@@ -5,6 +5,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessagingException;
@@ -19,6 +20,7 @@ import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 import com.example.spring_boot_project_api.service.CustomerCareService;
+import com.example.spring_boot_project_api.service.OrderService;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -26,15 +28,22 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private static final Pattern TICKET_TOPIC =
             Pattern.compile("^/topic/tickets/(\\d+)/messages$");
+    private static final Pattern ORDER_TOPIC =
+            Pattern.compile("^/topic/orders/(\\d+)(/status)?$");
+    private static final Pattern ADMIN_TOPIC =
+            Pattern.compile("^/topic/admin/(orders|notifications)$");
 
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomerCareService customerCareService;
+    private final OrderService orderService;
 
     public WebSocketConfig(
-            JwtTokenProvider jwtTokenProvider,
-            CustomerCareService customerCareService) {
+            @Lazy JwtTokenProvider jwtTokenProvider,
+            @Lazy CustomerCareService customerCareService,
+            @Lazy OrderService orderService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.customerCareService = customerCareService;
+        this.orderService = orderService;
     }
 
     @Override
@@ -89,6 +98,24 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             throw new MessagingException("Unauthorized");
         }
         String destination = accessor.getDestination();
+
+        Matcher orderMatcher = destination == null ? null : ORDER_TOPIC.matcher(destination);
+        if (orderMatcher != null && orderMatcher.matches()) {
+            Long orderId = Long.valueOf(orderMatcher.group(1));
+            if (user.isAdmin() || orderService.isOrderOwner(orderId, user.id())) {
+                return;
+            }
+            throw new MessagingException("Forbidden");
+        }
+
+        Matcher adminMatcher = destination == null ? null : ADMIN_TOPIC.matcher(destination);
+        if (adminMatcher != null && adminMatcher.matches()) {
+            if (user.isAdmin()) {
+                return;
+            }
+            throw new MessagingException("Forbidden");
+        }
+
         Matcher matcher = destination == null ? null : TICKET_TOPIC.matcher(destination);
         if (matcher == null || !matcher.matches()) {
             throw new MessagingException("Bad destination");

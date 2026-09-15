@@ -4,6 +4,7 @@ import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequ
 import com.example.spring_boot_project_api.dto.request.product.ProductRequest;
 import com.example.spring_boot_project_api.dto.request.product.ProductStockRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
+import com.example.spring_boot_project_api.dto.response.inventory.InventoryItemResponse;
 import com.example.spring_boot_project_api.dto.response.product.ProductResponse;
 
 public interface ProductService {
@@ -20,4 +21,6 @@ public interface ProductService {
     void deleteProduct(Long id);
 
     ProductResponse updateVariantStock(Long productId, Long variantId, ProductStockRequest request);
+
+    PagedResponse<InventoryItemResponse> getInventory(int page, int size, boolean lowStockOnly);
 }

@@ -62,6 +62,9 @@ class PaymentServiceImplTest {
     @Mock
     private BakongProperties bakongProperties;
 
+    @Mock
+    private NotificationService notificationService;
+
     @InjectMocks
     private PaymentServiceImpl paymentService;
 

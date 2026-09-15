@@ -9,6 +9,7 @@ import com.example.spring_boot_project_api.dto.request.order.OrderFilterRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.order.AdminOrderSummaryResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
+import com.example.spring_boot_project_api.dto.response.order.OrderStatusHistoryResponse;
 import com.example.spring_boot_project_api.enums.OrderStatus;
 import com.example.spring_boot_project_api.dto.request.order.CheckoutRequest;
 import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
@@ -44,4 +45,10 @@ public interface OrderService {
 
     //Cancel an order (admin, no ownership check)
     OrderResponse cancelOrderAdmin(Long orderId, String reason);
+
+    //Whether the given user owns the order (used by WS subscription authorization)
+    boolean isOrderOwner(Long orderId, Long userId);
+
+    //Status history for an order, with ownership check
+    List<OrderStatusHistoryResponse> getOrderStatusHistory(Long orderId, Long userId);
 }
