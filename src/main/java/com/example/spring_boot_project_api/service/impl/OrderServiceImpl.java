@@ -378,8 +378,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private boolean isKHQR(String paymentMethod) {
-        return paymentMethod != null
-                && paymentMethod.trim().equalsIgnoreCase("KHQR");
+        if (paymentMethod == null) return false;
+        String normalized = paymentMethod.trim().toUpperCase();
+        return "KHQR".equals(normalized)
+                || "ABA".equals(normalized)
+                || "ACLEDA".equals(normalized);
     }
 
     //Build a single order item from request, snapshotting the variant data
