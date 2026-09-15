@@ -29,9 +29,9 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 
 import kh.gov.nbc.bakong_khqr.BakongKHQR;
+import kh.gov.nbc.bakong_khqr.model.IndividualInfo;
 import kh.gov.nbc.bakong_khqr.model.KHQRData;
 import kh.gov.nbc.bakong_khqr.model.KHQRResponse;
-import kh.gov.nbc.bakong_khqr.model.MerchantInfo;
 
 @Service
 public class BakongServiceImpl implements BakongService {
@@ -54,33 +54,31 @@ public class BakongServiceImpl implements BakongService {
 
     @Override
     public KHQRResponse<KHQRData> generateQR(BakongRequest request) {
-        MerchantInfo merchantInfo = new MerchantInfo();
+        IndividualInfo individualInfo = new IndividualInfo();
 
-        merchantInfo.setExpirationTimestamp(
+        individualInfo.setExpirationTimestamp(
                 System.currentTimeMillis()
                         + request.expirationTimestamp() * 60 * 1000);
 
-        merchantInfo.setBakongAccountId(properties.getAccountId());
-        merchantInfo.setMerchantId(request.merchantId());
-        merchantInfo.setAcquiringBank(request.acquiringBank());
-        merchantInfo.setCurrency(request.currency());
-        merchantInfo.setAmount(request.amount());
-        merchantInfo.setMerchantName(request.merchantName());
-        merchantInfo.setMerchantCity(request.merchantCity());
-        merchantInfo.setBillNumber(request.billNumber());
-        merchantInfo.setMobileNumber(request.mobileNumber());
-        merchantInfo.setStoreLabel(request.storeLabel());
-        merchantInfo.setUpiAccountInformation(request.upiAccountInformation());
-        merchantInfo.setMerchantAlternateLanguagePreference(
+        individualInfo.setBakongAccountId(properties.getAccountId());
+        individualInfo.setCurrency(request.currency());
+        individualInfo.setAmount(request.amount());
+        individualInfo.setMerchantName(request.merchantName());
+        individualInfo.setMerchantCity(request.merchantCity());
+        individualInfo.setBillNumber(request.billNumber());
+        individualInfo.setMobileNumber(request.mobileNumber());
+        individualInfo.setStoreLabel(request.storeLabel());
+        individualInfo.setUpiAccountInformation(request.upiAccountInformation());
+        individualInfo.setMerchantAlternateLanguagePreference(
                 request.merchantAlternateLanguagePreference());
-        merchantInfo.setMerchantNameAlternateLanguage(
+        individualInfo.setMerchantNameAlternateLanguage(
                 request.merchantNameAlternateLanguage());
-        merchantInfo.setMerchantCityAlternateLanguage(
+        individualInfo.setMerchantCityAlternateLanguage(
                 request.merchantCityAlternateLanguage());
-        merchantInfo.setPurposeOfTransaction(request.purposeOfTransaction());
-        merchantInfo.setTerminalLabel(request.terminalLabel());
+        individualInfo.setPurposeOfTransaction(request.purposeOfTransaction());
+        individualInfo.setTerminalLabel(request.terminalLabel());
 
-        return BakongKHQR.generateMerchant(merchantInfo);
+        return BakongKHQR.generateIndividual(individualInfo);
     }
 
     @Override
