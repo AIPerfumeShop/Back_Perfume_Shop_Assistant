@@ -264,10 +264,11 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponse verifyBakongPayment(Long paymentId) {
         Payment payment = findPayment(paymentId);
 
+        // Already terminal: return current status idempotently instead of
+        // throwing, so the frontend auto-poll can pick up the result.
         if (payment.getStatus() == PaymentStatus.SUCCESSFUL
                 || payment.getStatus() == PaymentStatus.REFUNDED) {
-            throw new BadRequestException(
-                    "Payment is already in terminal state");
+            return paymentMapper.toResponse(payment);
         }
         if (payment.getMd5() == null || payment.getMd5().isBlank()) {
             throw new BadRequestException(
@@ -278,32 +279,42 @@ public class PaymentServiceImpl implements PaymentService {
                 new CheckTransactionRequest(payment.getMd5()));
 
         if (bakongResponse != null && bakongResponse.isSuccess()) {
-            payment.setStatus(PaymentStatus.SUCCESSFUL);
-            payment.setPaidAt(LocalDateTime.now());
+            LocalDateTime paidAt = LocalDateTime.now();
 
+            String externalRef = null;
             if (bakongResponse.data() instanceof Map<?, ?> dataMap
                     && dataMap.containsKey("externalRef")) {
                 Object ref = dataMap.get("externalRef");
-                payment.setExternalRef(
-                        ref == null ? null : String.valueOf(ref));
+                externalRef = ref == null ? null : String.valueOf(ref);
             }
 
-            Order order = payment.getOrder();
-            if (order != null) {
-                OrderStatus oldStatus = order.getStatus();
-                order.setStatus(OrderStatus.PAID);
-                orderRepository.save(order);
-                notificationService.orderStatusChanged(order, oldStatus, OrderStatus.PAID, null);
-            }
+            // Atomic CAS: only one caller wins the PENDING -> SUCCESSFUL
+            // transition. Concurrent callers get updated == 0 and skip
+            // the notification / order update.
+            int updated = paymentRepository.transitionFromPendingToSuccessful(
+                    paymentId, PaymentStatus.SUCCESSFUL, paidAt, externalRef);
 
-            paymentRepository.save(payment);
-            telegramService.sendPaymentNotification(
-                    paymentMapper.toResponse(payment));
-        } else {
-            paymentRepository.save(payment);
+            if (updated == 1) {
+                payment.setStatus(PaymentStatus.SUCCESSFUL);
+                payment.setPaidAt(paidAt);
+                payment.setExternalRef(externalRef);
+
+                Order order = payment.getOrder();
+                if (order != null) {
+                    OrderStatus oldStatus = order.getStatus();
+                    order.setStatus(OrderStatus.PAID);
+                    orderRepository.save(order);
+                    notificationService.orderStatusChanged(order, oldStatus, OrderStatus.PAID, null);
+                }
+
+                telegramService.sendPaymentNotification(
+                        paymentMapper.toResponse(payment));
+            }
+            // If updated == 0, another caller already transitioned: no
+            // duplicate Telegram or order update.
         }
 
-        return paymentMapper.toResponse(payment);
+        return paymentMapper.toResponse(findPayment(paymentId));
     }
 
     @Override

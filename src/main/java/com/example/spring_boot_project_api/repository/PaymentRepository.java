@@ -35,4 +35,17 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                               @Param("status") PaymentStatus status,
                               @Param("errorMessage") String errorMessage,
                               @Param("paidAt") LocalDateTime paidAt);
+
+    @Modifying
+    @Query("""
+            update Payment p
+               set p.status = :status,
+                   p.paidAt = :paidAt,
+                   p.externalRef = :externalRef
+             where p.id = :paymentId and p.status = 'PENDING'
+            """)
+    int transitionFromPendingToSuccessful(@Param("paymentId") Long paymentId,
+                                          @Param("status") PaymentStatus status,
+                                          @Param("paidAt") LocalDateTime paidAt,
+                                          @Param("externalRef") String externalRef);
 }
