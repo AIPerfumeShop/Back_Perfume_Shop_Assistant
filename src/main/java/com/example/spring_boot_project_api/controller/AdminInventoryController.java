@@ -22,13 +22,14 @@ public class AdminInventoryController {
         this.productService = productService;
     }
 
-    @Operation(summary = "Get inventory with optional low-stock filter (admin)")
+    @Operation(summary = "Get inventory with optional low-stock filter and search (admin)")
     @GetMapping
     public ResponseEntity<PagedResponse<InventoryItemResponse>> getInventory(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "false") boolean lowStockOnly) {
+            @RequestParam(defaultValue = "false") boolean lowStockOnly,
+            @RequestParam(required = false) String search) {
         return ResponseEntity.ok(
-                productService.getInventory(page, size, lowStockOnly));
+                productService.getInventory(page, size, lowStockOnly, search));
     }
 }

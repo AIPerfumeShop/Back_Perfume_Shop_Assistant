@@ -217,15 +217,27 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<InventoryItemResponse> getInventory(int page, int size, boolean lowStockOnly) {
+    public PagedResponse<InventoryItemResponse> getInventory(int page, int size, boolean lowStockOnly, String search) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
         PageRequest pageRequest = PageRequest.of(safePage, safeSize,
                 Sort.by(Sort.Order.asc("product.name"), Sort.Order.asc("sizeMl")));
 
-        Page<ProductVariant> variants = lowStockOnly
-                ? productVariantRepository.findByStockLessThan(lowStockThreshold, pageRequest)
-                : productVariantRepository.findAll(pageRequest);
+        boolean hasSearch = search != null && !search.isBlank();
+        Page<ProductVariant> variants;
+
+        if (hasSearch) {
+            String trimmed = search.trim();
+            variants = lowStockOnly
+                    ? productVariantRepository.searchLowStockByProductNameBrandOrSku(
+                            lowStockThreshold, trimmed, pageRequest)
+                    : productVariantRepository.searchByProductNameBrandOrSku(
+                            trimmed, pageRequest);
+        } else {
+            variants = lowStockOnly
+                    ? productVariantRepository.findByStockLessThan(lowStockThreshold, pageRequest)
+                    : productVariantRepository.findAll(pageRequest);
+        }
 
         List<InventoryItemResponse> content = variants.getContent().stream()
                 .map(this::toInventoryItem)

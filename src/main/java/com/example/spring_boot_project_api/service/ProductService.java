@@ -22,5 +22,5 @@ public interface ProductService {
 
     ProductResponse updateVariantStock(Long productId, Long variantId, ProductStockRequest request);
 
-    PagedResponse<InventoryItemResponse> getInventory(int page, int size, boolean lowStockOnly);
+    PagedResponse<InventoryItemResponse> getInventory(int page, int size, boolean lowStockOnly, String search);
 }
