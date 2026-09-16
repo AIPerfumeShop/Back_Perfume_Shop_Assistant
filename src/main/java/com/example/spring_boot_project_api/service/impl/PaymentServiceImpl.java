@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.example.spring_boot_project_api.config.BakongProperties;
 import com.example.spring_boot_project_api.dto.request.bakong.BakongRequest;
@@ -200,8 +202,7 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setErrorMessage(errorMessage);
 
             if (success) {
-                telegramService.sendPaymentNotification(
-                        paymentMapper.toResponse(payment));
+                sendPaymentNotificationAfterCommit(paymentMapper.toResponse(payment));
             }
             return success;
         }
@@ -318,8 +319,7 @@ public class PaymentServiceImpl implements PaymentService {
                     notificationService.orderStatusChanged(order, oldStatus, OrderStatus.PAID, null);
                 }
 
-                telegramService.sendPaymentNotification(
-                        paymentMapper.toResponse(payment));
+                sendPaymentNotificationAfterCommit(paymentMapper.toResponse(payment));
             }
             // If updated == 0, another caller already transitioned: no
             // duplicate Telegram or order update.
@@ -347,6 +347,28 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "Payment not found with ID : " + paymentId));
+    }
+
+    /**
+     * Sends the Telegram payment notification only after the current
+     * transaction commits, so a failed commit (e.g. a DB constraint error)
+     * never announces a payment that was not actually persisted. When called
+     * outside a transaction, it sends immediately.
+     */
+    private void sendPaymentNotificationAfterCommit(PaymentResponse payment) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_COMMITTED) {
+                                telegramService.sendPaymentNotification(payment);
+                            }
+                        }
+                    });
+        } else {
+            telegramService.sendPaymentNotification(payment);
+        }
     }
 
     private PaymentMethod resolvePaymentMethod(String paymentMethodName) {
