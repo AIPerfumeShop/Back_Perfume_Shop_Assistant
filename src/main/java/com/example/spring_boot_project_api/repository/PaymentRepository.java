@@ -48,4 +48,14 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                                           @Param("status") PaymentStatus status,
                                           @Param("paidAt") LocalDateTime paidAt,
                                           @Param("externalRef") String externalRef);
+
+    @Query("""
+            SELECT p FROM Payment p
+             WHERE p.order.id IN :orderIds
+               AND p.createdAt = (
+                   SELECT MAX(p2.createdAt) FROM Payment p2
+                   WHERE p2.order.id = p.order.id
+               )
+            """)
+    List<Payment> findLatestByOrderIds(@Param("orderIds") List<Long> orderIds);
 }

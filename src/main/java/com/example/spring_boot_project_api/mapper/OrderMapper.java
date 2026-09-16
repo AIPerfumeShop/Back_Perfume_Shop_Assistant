@@ -1,6 +1,7 @@
 package com.example.spring_boot_project_api.mapper;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
@@ -9,6 +10,7 @@ import com.example.spring_boot_project_api.dto.response.order.OrderItemResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.OrderItem;
+import com.example.spring_boot_project_api.model.Payment;
 
 @Component
 public class OrderMapper {
@@ -87,6 +89,17 @@ public class OrderMapper {
         response.setItemCount(order.getItems() == null ? 0 : order.getItems().size());
         response.setCreatedAt(order.getCreatedAt());
         response.setUpdatedAt(order.getUpdatedAt());
+        return response;
+    }
+
+    //AdminOrderSummaryResponse with payment info
+    public AdminOrderSummaryResponse toAdminSummaryResponse(Order order, Payment payment){
+        AdminOrderSummaryResponse response = toAdminSummaryResponse(order);
+        if (response != null && payment != null) {
+            response.setPaymentId(payment.getId());
+            response.setPaymentMethod(payment.getPaymentMethod());
+            response.setPaymentStatus(payment.getStatus());
+        }
         return response;
     }
 

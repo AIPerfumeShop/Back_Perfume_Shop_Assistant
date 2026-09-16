@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import com.example.spring_boot_project_api.enums.OrderStatus;
+import com.example.spring_boot_project_api.enums.PaymentStatus;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -20,4 +21,9 @@ public class AdminOrderSummaryResponse {
     private Integer itemCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Payment info (latest payment for this order)
+    private Long paymentId;
+    private String paymentMethod;
+    private PaymentStatus paymentStatus;
 }

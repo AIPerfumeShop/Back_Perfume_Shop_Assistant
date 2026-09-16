@@ -158,8 +158,23 @@ public class OrderServiceImpl implements OrderService {
                 OrderSpecification.fromFilter(filter),
                 filter.toPageRequest());
 
+        List<Long> orderIds = orders.getContent().stream()
+                .map(Order::getId)
+                .toList();
+
+        // Batch-fetch latest payment for each order (avoids N+1)
+        Map<Long, Payment> paymentByOrderId = paymentRepository
+                .findLatestByOrderIds(orderIds)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        p -> p.getOrder().getId(),
+                        p -> p,
+                        (a, b) -> a // keep first (most recent)
+                ));
+
         List<AdminOrderSummaryResponse> content = orders.getContent().stream()
-                .map(orderMapper::toAdminSummaryResponse)
+                .map(order -> orderMapper.toAdminSummaryResponse(
+                        order, paymentByOrderId.get(order.getId())))
                 .toList();
 
         return new PagedResponse<>(
