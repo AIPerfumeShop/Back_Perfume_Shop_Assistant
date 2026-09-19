@@ -15,4 +15,10 @@ public class SupportQueueResponse {
     private long resolvedCount;
     private long totalCount;
     private List<SupportTicketResponse> tickets;
+
+    // Pagination fields
+    private int page;
+    private int size;
+    private long totalElements;
+    private int totalPages;
 }

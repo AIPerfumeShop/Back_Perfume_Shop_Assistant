@@ -48,7 +48,7 @@ public interface CustomerCareService {
     SupportTicketNoteResponse addNote(Long ticketId, String note, Long agentId);
 
     //Agent shared inbox + dashboard counts
-    SupportQueueResponse getQueue(TicketStatus status, String search);
+    SupportQueueResponse getQueue(TicketStatus status, String search, int page, int size);
 
     SupportAnalyticsResponse getAnalytics(LocalDate from, LocalDate to);
 }

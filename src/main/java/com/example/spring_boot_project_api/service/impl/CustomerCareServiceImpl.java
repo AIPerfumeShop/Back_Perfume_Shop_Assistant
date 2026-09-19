@@ -488,17 +488,10 @@ public class CustomerCareServiceImpl implements CustomerCareService {
 
     @Override
     @Transactional(readOnly = true)
-    public SupportQueueResponse getQueue(TicketStatus status, String search) {
-        List<SupportTicket> tickets = status != null
-                ? supportTicketRepository.findByStatusOrderByCreatedAtDesc(status)
-                : supportTicketRepository.findByStatusNotOrderByCreatedAtDesc(TicketStatus.RESOLVED);
-
-        if (search != null && !search.isBlank()) {
-            String term = search.toLowerCase();
-            tickets = tickets.stream()
-                    .filter(t -> matches(t, term))
-                    .toList();
-        }
+    public SupportQueueResponse getQueue(TicketStatus status, String search, int page, int size) {
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1));
+        Page<SupportTicket> result =
+                supportTicketRepository.findQueueTickets(status, search, pageable);
 
         SupportQueueResponse response = new SupportQueueResponse();
         response.setUrgentCount(supportTicketRepository
@@ -508,7 +501,11 @@ public class CustomerCareServiceImpl implements CustomerCareService {
         response.setInProgressCount(supportTicketRepository.countByStatus(TicketStatus.IN_PROGRESS));
         response.setResolvedCount(supportTicketRepository.countByStatus(TicketStatus.RESOLVED));
         response.setTotalCount(supportTicketRepository.count());
-        response.setTickets(supportTicketMapper.toResponseList(tickets));
+        response.setTickets(supportTicketMapper.toResponseList(result.getContent()));
+        response.setPage(result.getNumber());
+        response.setSize(result.getSize());
+        response.setTotalElements(result.getTotalElements());
+        response.setTotalPages(result.getTotalPages());
         return response;
     }
 

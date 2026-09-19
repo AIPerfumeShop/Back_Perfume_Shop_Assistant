@@ -122,8 +122,10 @@ public class CustomerCareController {
     @GetMapping("/queue")
     public ResponseEntity<SupportQueueResponse> getQueue(
             @RequestParam(required = false) TicketStatus status,
-            @RequestParam(required = false) String search) {
-        return ResponseEntity.ok(customerCareService.getQueue(status, search));
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(customerCareService.getQueue(status, search, page, size));
     }
 
     //Agent fully-loaded ticket context (internal notes included)
