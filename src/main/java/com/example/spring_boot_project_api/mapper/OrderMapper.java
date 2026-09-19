@@ -97,7 +97,8 @@ public class OrderMapper {
         AdminOrderSummaryResponse response = toAdminSummaryResponse(order);
         if (response != null && payment != null) {
             response.setPaymentId(payment.getId());
-            response.setPaymentMethod(payment.getPaymentMethod());
+            response.setPaymentMethod(payment.getPaymentMethod() != null
+                    ? payment.getPaymentMethod().name() : null);
             response.setPaymentStatus(payment.getStatus());
         }
         return response;
