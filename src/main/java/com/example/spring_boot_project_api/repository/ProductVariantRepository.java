@@ -1,5 +1,6 @@
 package com.example.spring_boot_project_api.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,6 +15,8 @@ import com.example.spring_boot_project_api.model.ProductVariant;
 @Repository
 public interface ProductVariantRepository extends JpaRepository<ProductVariant, Long> {
     Optional<ProductVariant> findBySku(String sku);
+
+    List<ProductVariant> findAllByProductIdIn(Collection<Long> productIds);
 
     List<ProductVariant> findByStockLessThan(int threshold);
 
