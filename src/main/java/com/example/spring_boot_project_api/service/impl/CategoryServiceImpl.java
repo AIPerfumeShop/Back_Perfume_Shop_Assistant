@@ -86,10 +86,6 @@ public class CategoryServiceImpl implements CategoryService {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Category not found with ID : " + id));
-        //Do not update a deactivated Category
-        if (!Boolean.TRUE.equals(category.getIsActive())) {
-            throw new ResourceNotFoundException("Category not found with ID : " + id);
-        }
         //Check duplicate category name (excluding self)
         if (categoryRepository.existsByNameIgnoreCaseAndIdNot(request.getName(), id)) {
             throw new BadRequestException(

@@ -88,6 +88,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/categories/**").permitAll()
                 .requestMatchers("/api/products/**").permitAll()
                 .requestMatchers("/api/upload/**").permitAll()
+                .requestMatchers("/api/site-content").permitAll()
                 .requestMatchers("/api/gift-finder/**").permitAll()
                 .requestMatchers("/api/orders/**").authenticated()
                 .requestMatchers("/api/cs/analytics").hasRole("ADMIN")
@@ -100,6 +101,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/cs/**").authenticated()
                 // WebSocket handshake is authenticated at the STOMP layer
                 .requestMatchers("/ws/**").permitAll()
+                // Let Spring Boot's error dispatch render real 404/500s instead of
+                // misreporting them as 401 (the /error sub-request would otherwise
+                // hit `.anyRequest().authenticated()`).
+                .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -46,5 +46,8 @@ public class CategoryMapper {
         category.setName(request.getName());
         category.setDescription(request.getDescription());
         category.setImageUrl(request.getImageUrl());
+        if (request.getIsActive() != null) {
+            category.setIsActive(request.getIsActive());
+        }
     }
 }

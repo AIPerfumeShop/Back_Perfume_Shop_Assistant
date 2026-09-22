@@ -22,5 +22,8 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
             "where e.incurredAt >= :start and e.incurredAt <= :end")
     BigDecimal sumAmountBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
 
+    @Query("select coalesce(sum(e.amount), 0) from Expense e")
+    BigDecimal sumAmountAll();
+
     List<Expense> findTop5ByOrderByIncurredAtDescIdDesc();
 }

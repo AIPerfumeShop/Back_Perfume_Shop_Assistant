@@ -14,4 +14,5 @@ public class UpdateCategoryRequest {
     private String description;
     @Size(max = 500, message = "Image url must be under 500")
     private String imageUrl;
+    private Boolean isActive;
 }

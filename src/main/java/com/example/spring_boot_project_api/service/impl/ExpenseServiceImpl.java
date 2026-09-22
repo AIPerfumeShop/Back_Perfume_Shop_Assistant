@@ -73,7 +73,7 @@ public class ExpenseServiceImpl implements ExpenseService {
     @Transactional(readOnly = true)
     public BigDecimal getTotalExpenses(LocalDate start, LocalDate end) {
         if (start == null || end == null) {
-            return expenseRepository.sumAmountBetween(LocalDate.MIN, LocalDate.MAX);
+            return expenseRepository.sumAmountAll();
         }
         return expenseRepository.sumAmountBetween(start, end);
     }
