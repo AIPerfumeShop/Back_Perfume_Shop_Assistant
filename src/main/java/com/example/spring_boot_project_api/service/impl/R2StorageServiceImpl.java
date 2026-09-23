@@ -29,7 +29,8 @@ public class R2StorageServiceImpl implements UploadStorageService {
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "image/jpeg", "image/png", "image/webp");
     private static final Set<String> ALLOWED_FOLDERS = Set.of(
-            "products", "brands", "categories", "profiles");
+            "products", "brands", "categories", "profiles",
+            "avatars", "content", "store", "home", "about");
     private static final String DEFAULT_FOLDER = "products";
 
     private final S3Client s3Client;
@@ -96,7 +97,7 @@ public class R2StorageServiceImpl implements UploadStorageService {
         }
         if (!ALLOWED_FOLDERS.contains(folder)) {
             throw new UploadStorageException(
-                    "Unsupported folder: " + folder + ". Allowed: products, brands, categories");
+                    "Unsupported folder: " + folder + ". Allowed: " + String.join(", ", ALLOWED_FOLDERS));
         }
         return folder;
     }
