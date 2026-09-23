@@ -12,7 +12,7 @@ public interface CategoryService {
     CategoryResponse createCategory(CreateCategoryRequest request);
 
     //Get all categories
-    List<CategoryResponse> getAllCategories();
+    List<CategoryResponse> getAllCategories(Boolean includeInactive);
 
     //Get category by id
     CategoryResponse getCategoryById(Long id);

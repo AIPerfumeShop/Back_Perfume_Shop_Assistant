@@ -27,10 +27,12 @@ public class ProductSpecification {
             Predicate predicate = cb.conjunction();
 
             //Default: only active (not soft-deleted) products. Admin can opt into inactive via isActive=false.
-            if (filter.getIsActive() == null || Boolean.TRUE.equals(filter.getIsActive())) {
-                predicate = cb.and(predicate, cb.isTrue(root.get("isActive")));
-            } else {
-                predicate = cb.and(predicate, cb.isFalse(root.get("isActive")));
+            if (!Boolean.TRUE.equals(filter.getIncludeInactive())) {
+                if (filter.getIsActive() == null || Boolean.TRUE.equals(filter.getIsActive())) {
+                    predicate = cb.and(predicate, cb.isTrue(root.get("isActive")));
+                } else {
+                    predicate = cb.and(predicate, cb.isFalse(root.get("isActive")));
+                }
             }
 
             if (filter.hasSearch()) {

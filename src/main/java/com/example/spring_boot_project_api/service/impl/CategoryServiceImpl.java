@@ -54,10 +54,11 @@ public class CategoryServiceImpl implements CategoryService {
     // Get all categories
     @Override
     @Transactional(readOnly = true)
-    public List<CategoryResponse> getAllCategories() {
+    public List<CategoryResponse> getAllCategories(Boolean includeInactive) {
         return categoryRepository.findAll()
                 .stream()
-                .filter(category -> Boolean.TRUE.equals(category.getIsActive()))
+                .filter(category -> Boolean.TRUE.equals(includeInactive)
+                        || Boolean.TRUE.equals(category.getIsActive()))
                 .map(categoryMapper::toResponse)
                 .toList();
 

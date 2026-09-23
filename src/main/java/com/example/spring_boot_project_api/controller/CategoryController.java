@@ -55,8 +55,9 @@ public class CategoryController {
         @ApiResponse(responseCode = "200", description = "Categories retrieved successfully")
     })
     @GetMapping
-    public ResponseEntity<List<CategoryResponse>> getAllCategories() {
-        List<CategoryResponse> response = categoryService.getAllCategories();
+    public ResponseEntity<List<CategoryResponse>> getAllCategories(
+            @RequestParam(required = false) Boolean includeInactive) {
+        List<CategoryResponse> response = categoryService.getAllCategories(includeInactive);
         return ResponseEntity.ok(response);
     }
 

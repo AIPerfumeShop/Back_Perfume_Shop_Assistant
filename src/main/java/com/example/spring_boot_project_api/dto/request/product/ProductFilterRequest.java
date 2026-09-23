@@ -37,6 +37,8 @@ public class ProductFilterRequest {
     private Boolean inStock;
     //null (default) or true -> only active products; false -> only inactive products
     private Boolean isActive;
+    //true -> include both active and inactive products (admin lists)
+    private Boolean includeInactive;
 
     private Integer page;
     private Integer size;
