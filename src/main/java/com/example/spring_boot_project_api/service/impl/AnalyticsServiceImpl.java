@@ -64,8 +64,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end);
-        long totalOrders = orderRepository.countByCreatedAtBetween(start, end);
+        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end, OrderStatus.CANCELLED);
+        long totalOrders = orderRepository.countByCreatedAtBetween(start, end, OrderStatus.CANCELLED);
 
         SalesAnalyticsResponse response = new SalesAnalyticsResponse();
         response.setTotalRevenue(totalRevenue);
@@ -74,7 +74,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 ? totalRevenue.divide(BigDecimal.valueOf(totalOrders), 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO);
         response.setOrdersByStatus(orderStatusCounts(start, end));
-        response.setDailySales(mapDailySales(orderItemRepository.findDailySales(start, end)));
+        response.setDailySales(mapDailySales(orderItemRepository.findDailySales(start, end, OrderStatus.CANCELLED)));
         return response;
     }
 
@@ -85,7 +85,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         LocalDateTime end = resolveEnd(filter);
 
         List<ProductPerformanceStat> stats = orderItemRepository.findProductPerformance(
-                start, end, PageRequest.of(0, TOP_LIMIT));
+                start, end, OrderStatus.CANCELLED, PageRequest.of(0, TOP_LIMIT));
 
         ProductAnalyticsResponse response = new ProductAnalyticsResponse();
         response.setTotalProductsSold(stats.stream()
@@ -107,7 +107,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        List<CategoryPerformanceStat> stats = orderItemRepository.findCategoryPerformance(start, end);
+        List<CategoryPerformanceStat> stats = orderItemRepository.findCategoryPerformance(start, end, OrderStatus.CANCELLED);
 
         CategoryAnalyticsResponse response = new CategoryAnalyticsResponse();
         response.setTotalQuantitySold(stats.stream()
@@ -129,7 +129,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        List<BrandPerformanceStat> stats = orderItemRepository.findBrandPerformance(start, end);
+        List<BrandPerformanceStat> stats = orderItemRepository.findBrandPerformance(start, end, OrderStatus.CANCELLED);
 
         BrandAnalyticsResponse response = new BrandAnalyticsResponse();
         response.setTotalQuantitySold(stats.stream()
@@ -154,7 +154,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         long totalCustomers = userRepository.countByRole(Role.CUSTOMER);
         long newCustomers = userRepository.countByRoleAndCreatedAtBetween(
                 Role.CUSTOMER, start, end);
-        BigDecimal rangeRevenue = orderRepository.sumTotalAmountBetween(start, end);
+        BigDecimal rangeRevenue = orderRepository.sumTotalAmountBetween(start, end, OrderStatus.CANCELLED);
 
         CustomerAnalyticsResponse response = new CustomerAnalyticsResponse();
         response.setTotalCustomers(totalCustomers);
@@ -163,7 +163,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 ? rangeRevenue.divide(BigDecimal.valueOf(totalCustomers), 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO);
         response.setTopCustomers(orderRepository.findTopCustomers(
-                start, end, PageRequest.of(0, TOP_LIMIT)).stream()
+                start, end, OrderStatus.CANCELLED, PageRequest.of(0, TOP_LIMIT)).stream()
                 .map(this::toCustomerPerformanceResponse)
                 .toList());
         return response;

@@ -24,6 +24,8 @@ import com.example.spring_boot_project_api.dto.request.order.CreateOrderRequest;
 import com.example.spring_boot_project_api.dto.request.order.OrderItemRequest;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.enums.OrderStatus;
+import com.example.spring_boot_project_api.enums.PaymentMethod;
+import com.example.spring_boot_project_api.enums.PaymentStatus;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.InvalidOrderException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
@@ -31,6 +33,7 @@ import com.example.spring_boot_project_api.mapper.OrderMapper;
 import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.OrderItem;
 import com.example.spring_boot_project_api.model.Payment;
+import com.example.spring_boot_project_api.model.Product;
 import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.OrderRepository;
@@ -49,6 +52,16 @@ public class OrderServiceImpl implements OrderService {
     private static final long DUPLICATE_GUARD_WINDOW_SECONDS = 30;
     //Below this stock level an admin low-stock alert is fired.
     private static final int LOW_STOCK_THRESHOLD = 5;
+
+    //Relative flow position of each non-terminal status. A pending/payment
+    //status may only move forward (or to CANCELLED); it can never go back.
+    private static final Map<OrderStatus, Integer> ORDER_STATUS_FLOW = Map.of(
+            OrderStatus.PENDING, 0,
+            OrderStatus.PAID, 1,
+            OrderStatus.CONFIRMED, 2,
+            OrderStatus.PROCESSING, 3,
+            OrderStatus.SHIPPED, 4,
+            OrderStatus.DELIVERED, 5);
 
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
@@ -198,21 +211,43 @@ public class OrderServiceImpl implements OrderService {
         Order order = findOrder(orderId);
         OrderStatus oldStatus = order.getStatus();
 
-        if (oldStatus == OrderStatus.CANCELLED &&
-                status != OrderStatus.CANCELLED) {
+        if (status == null) {
+            throw new InvalidOrderException("New status is required");
+        }
+
+        if (oldStatus == OrderStatus.DELIVERED
+                || oldStatus == OrderStatus.CANCELLED) {
             throw new InvalidOrderException(
-                    "Cancelled order cannot change status");
+                    "Cannot change a " + oldStatus + " order");
+        }
+
+        if (status != OrderStatus.CANCELLED) {
+            Integer oldFlow = ORDER_STATUS_FLOW.getOrDefault(oldStatus, 0);
+            Integer newFlow = ORDER_STATUS_FLOW.getOrDefault(status, 0);
+            if (newFlow < oldFlow) {
+                throw new InvalidOrderException(
+                        "Cannot move order backwards from " + oldStatus
+                                + " to " + status);
+            }
         }
 
         //Restore stock if order is being cancelled now
         if (status == OrderStatus.CANCELLED &&
                 oldStatus != OrderStatus.CANCELLED) {
             restoreStock(order);
+            settleCashPayment(order, PaymentStatus.FAILED,
+                    "Order cancelled before payment");
         }
 
         order.setStatus(status);
 
         Order saved = orderRepository.save(order);
+
+        //Cash on delivery is only collected when the order is delivered.
+        if (status == OrderStatus.DELIVERED) {
+            settleCashPayment(order, PaymentStatus.SUCCESSFUL, null);
+        }
+
         notificationService.orderStatusChanged(saved, oldStatus, status, null);
         return orderMapper.toResponse(saved);
     }
@@ -227,6 +262,10 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new InvalidOrderException("Order is already cancelled");
         }
+        if (order.getStatus() == OrderStatus.DELIVERED) {
+            throw new InvalidOrderException(
+                    "Delivered order cannot be cancelled");
+        }
 
         OrderStatus oldStatus = order.getStatus();
 
@@ -234,6 +273,8 @@ public class OrderServiceImpl implements OrderService {
         order.setCancelReason(reason);
 
         restoreStock(order);
+        settleCashPayment(order, PaymentStatus.FAILED,
+                "Order cancelled before payment");
 
         Order saved = orderRepository.save(order);
         notificationService.orderStatusChanged(saved, oldStatus, OrderStatus.CANCELLED, reason);
@@ -248,6 +289,10 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new InvalidOrderException("Order is already cancelled");
         }
+        if (order.getStatus() == OrderStatus.DELIVERED) {
+            throw new InvalidOrderException(
+                    "Delivered order cannot be cancelled");
+        }
 
         OrderStatus oldStatus = order.getStatus();
 
@@ -255,6 +300,8 @@ public class OrderServiceImpl implements OrderService {
         order.setCancelReason(reason);
 
         restoreStock(order);
+        settleCashPayment(order, PaymentStatus.FAILED,
+                "Order cancelled before payment");
 
         Order saved = orderRepository.save(order);
         notificationService.orderStatusChanged(saved, oldStatus, OrderStatus.CANCELLED, reason);
@@ -314,6 +361,13 @@ public class OrderServiceImpl implements OrderService {
         //Initialize payment
         Payment payment =
                 paymentService.initPayment(savedOrder, request.getPaymentMethod());
+
+        //Cash on delivery is collected at delivery, so both the order and the
+        //payment stay PENDING until the order is marked DELIVERED.
+        if ("CASH".equalsIgnoreCase(request.getPaymentMethod())) {
+            return toCheckoutResponse(payment, savedOrder);
+        }
+
         boolean paymentSuccess =
                 paymentService.processPayment(payment.getId());
 
@@ -416,16 +470,20 @@ public class OrderServiceImpl implements OrderService {
 
     //Build a single order item from request, snapshotting the variant data
     private OrderItem buildOrderItem(OrderItemRequest itemRequest, Order order) {
+        //Pessimistic row lock: two concurrent checkouts cannot both pass the
+        //stock check below and oversell a variant.
         ProductVariant variant = productVariantRepository
-                .findById(itemRequest.getVariantId())
+                .findByIdForUpdate(itemRequest.getVariantId())
                 .orElseThrow(() ->
                         new InvalidOrderException(
                                 "Product variant not found with ID : "
                                         + itemRequest.getVariantId()));
 
-        if (!Boolean.TRUE.equals(variant.getIsActive())) {
+        Product product = variant.getProduct();
+        if (!Boolean.TRUE.equals(variant.getIsActive())
+                || !Boolean.TRUE.equals(product.getIsActive())) {
             throw new InvalidOrderException(
-                    "Product variant is not available : "
+                    "Product is not available : "
                             + itemRequest.getVariantId());
         }
 
@@ -476,6 +534,28 @@ public class OrderServiceImpl implements OrderService {
             }
             variant.setStock(variant.getStock() + item.getQuantity());
             productVariantRepository.save(variant);
+        }
+    }
+
+    //Cash on delivery is collected at delivery: mark the pending CASH payment
+    //SUCCESSFUL when the order is delivered, or FAILED when it is cancelled.
+    private void settleCashPayment(Order order, PaymentStatus target, String note) {
+        Payment payment = paymentRepository.findByOrderId(order.getId())
+                .orElse(null);
+        if (payment == null
+                || payment.getPaymentMethod() != PaymentMethod.CASH) {
+            return;
+        }
+
+        LocalDateTime paidAt = target == PaymentStatus.SUCCESSFUL
+                ? LocalDateTime.now()
+                : null;
+        int updated = paymentRepository.transitionFromPending(
+                payment.getId(), target, note, paidAt);
+        if (updated == 1) {
+            payment.setStatus(target);
+            payment.setPaidAt(paidAt);
+            payment.setErrorMessage(note);
         }
     }
 

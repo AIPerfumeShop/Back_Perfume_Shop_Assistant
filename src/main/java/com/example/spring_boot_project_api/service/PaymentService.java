@@ -69,4 +69,11 @@ public interface PaymentService {
      * Admin: manually update a payment's status (e.g. mark as SUCCESSFUL or FAILED).
      */
     PaymentResponse updatePaymentStatus(Long paymentId, String status, String reason);
+
+    /**
+     * Atomically expire a PENDING (KHQR) payment as FAILED. Returns true only
+     * if this call actually performed the transition (a concurrent verification
+     * that already settled the payment causes a false return).
+     */
+    boolean expirePayment(Long paymentId);
 }

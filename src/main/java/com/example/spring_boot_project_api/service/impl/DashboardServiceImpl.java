@@ -49,7 +49,7 @@ public class DashboardServiceImpl implements DashboardService {
         response.setTotalCustomers(userRepository.countByRole(Role.CUSTOMER));
         response.setTotalProducts(productRepository.count());
         response.setTotalOrders(orderRepository.count());
-        response.setTotalRevenue(orderRepository.sumTotalAmount());
+        response.setTotalRevenue(orderRepository.sumTotalAmount(OrderStatus.CANCELLED));
         response.setOrderStatusCounts(countOrdersByStatus());
         response.setRecentOrders(mapRecentOrders(orderRepository.findTop10ByOrderByCreatedAtDesc()));
         response.setBestSellers(mapBestSellers(orderItemRepository.findTop5BestSellers()));

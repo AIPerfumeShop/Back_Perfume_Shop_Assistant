@@ -53,15 +53,23 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
 
     long countByStatus(OrderStatus status);
 
-    @Query("select coalesce(sum(o.totalAmount), 0) from Order o")
-    BigDecimal sumTotalAmount();
+    @Query("select coalesce(sum(o.totalAmount), 0) from Order o " +
+            "where o.status <> :cancelled")
+    BigDecimal sumTotalAmount(@Param("cancelled") OrderStatus cancelled);
 
     @Query("select coalesce(sum(o.totalAmount), 0) from Order o " +
-            "where o.createdAt >= :start and o.createdAt < :end")
+            "where o.createdAt >= :start and o.createdAt < :end " +
+            "and o.status <> :cancelled")
     BigDecimal sumTotalAmountBetween(@Param("start") LocalDateTime start,
-                                     @Param("end") LocalDateTime end);
+                                     @Param("end") LocalDateTime end,
+                                     @Param("cancelled") OrderStatus cancelled);
 
-    long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+    @Query("select count(o) from Order o " +
+            "where o.createdAt >= :start and o.createdAt < :end " +
+            "and o.status <> :cancelled")
+    long countByCreatedAtBetween(@Param("start") LocalDateTime start,
+                                 @Param("end") LocalDateTime end,
+                                 @Param("cancelled") OrderStatus cancelled);
 
     @Query("""
             select o.status as status,
@@ -81,11 +89,13 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
             from Order o
             join o.user u
             where o.createdAt >= :start and o.createdAt < :end
+              and o.status <> :cancelled
             group by u.id, u.name, u.email
             order by sum(o.totalAmount) desc
             """)
     List<CustomerOrderStat> findTopCustomers(@Param("start") LocalDateTime start,
                                              @Param("end") LocalDateTime end,
+                                             @Param("cancelled") OrderStatus cancelled,
                                              Pageable pageable);
 
     interface OrderStatusStat {

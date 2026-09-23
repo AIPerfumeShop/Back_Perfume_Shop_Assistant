@@ -87,7 +87,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/brands/**").permitAll()
                 .requestMatchers("/api/categories/**").permitAll()
                 .requestMatchers("/api/products/**").permitAll()
-                .requestMatchers("/api/upload/**").permitAll()
+                .requestMatchers("/api/upload/**").authenticated()
                 .requestMatchers("/api/site-content").permitAll()
                 .requestMatchers("/api/gift-finder/**").permitAll()
                 .requestMatchers("/api/orders/**").authenticated()

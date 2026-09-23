@@ -176,6 +176,10 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException(
                     "Payment cannot be processed again");
         }
+        if (payment.getPaymentMethod() == PaymentMethod.CASH) {
+            throw new BadRequestException(
+                    "Cash on delivery is only settled when the order is delivered");
+        }
 
         boolean success = payment.getAmount() != null
                 && payment.getAmount().signum() > 0
@@ -385,6 +389,28 @@ public class PaymentServiceImpl implements PaymentService {
                                     .map(Enum::name)
                                     .toList()));
         }
+    }
+
+    @Override
+    public boolean expirePayment(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if (payment.getStatus() != PaymentStatus.PENDING) {
+            return false;
+        }
+
+        int updated = paymentRepository.transitionFromPending(
+                paymentId, PaymentStatus.FAILED,
+                "Payment expired while awaiting KHQR transfer", null);
+        if (updated == 1) {
+            payment.setStatus(PaymentStatus.FAILED);
+            payment.setErrorMessage(
+                    "Payment expired while awaiting KHQR transfer");
+            return true;
+        }
+
+        //A concurrent verification settled the payment first.
+        return false;
     }
 
     @Override

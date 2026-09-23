@@ -49,12 +49,12 @@ public class StatisticsServiceImpl implements StatisticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end);
-        long totalOrders = orderRepository.countByCreatedAtBetween(start, end);
+        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end, OrderStatus.CANCELLED);
+        long totalOrders = orderRepository.countByCreatedAtBetween(start, end, OrderStatus.CANCELLED);
         ReviewRatingStat rating = reviewRepository.findRatingSummary();
 
         ProductStatisticsResponse response = new ProductStatisticsResponse();
-        response.setTotalProductsSold(orderItemRepository.sumQuantityBetween(start, end));
+        response.setTotalProductsSold(orderItemRepository.sumQuantityBetween(start, end, OrderStatus.CANCELLED));
         response.setTotalProductRevenue(totalRevenue);
         response.setTotalOrders(totalOrders);
         response.setTotalRevenue(totalRevenue);
@@ -72,7 +72,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        return orderItemRepository.findDailySales(start, end).stream()
+        return orderItemRepository.findDailySales(start, end, OrderStatus.CANCELLED).stream()
                 .map(this::toDailySalesResponse)
                 .toList();
     }

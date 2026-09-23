@@ -19,6 +19,7 @@ import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.enums.PaymentStatus;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.BakongException;
+import com.example.spring_boot_project_api.exception.InvalidOrderException;
 import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.service.OrderService;
@@ -99,6 +100,7 @@ public class BakongPaymentReconciliation {
                 }
             } catch (BakongException
                      | BadRequestException
+                     | InvalidOrderException
                      | RestClientException ex) {
                 log.warn("KHQR verification failed for payment {}: {}",
                         payment.getId(), ex.getMessage(), ex);
@@ -117,9 +119,16 @@ public class BakongPaymentReconciliation {
                 ? payment.getOrder().getId()
                 : null;
 
-        payment.setStatus(PaymentStatus.FAILED);
-        payment.setErrorMessage("Payment expired while awaiting KHQR transfer");
-        paymentRepository.save(payment);
+        lastChecked.remove(payment.getId());
+
+        //Atomic PENDING -> FAILED: if a concurrent verification already
+        //settled this payment as SUCCESSFUL, the transition matches 0 rows
+        //and we must not cancel the (now paid) order.
+        if (!paymentService.expirePayment(payment.getId())) {
+            log.info("Payment {} settled before expiry; skipping cancel",
+                    payment.getId());
+            return;
+        }
 
         if (orderId != null) {
             orderService.cancelOrderAdmin(
