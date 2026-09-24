@@ -528,6 +528,14 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    public void announceSuccessfulPayment(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+        if (payment.getStatus() == PaymentStatus.SUCCESSFUL) {
+            sendPaymentNotificationAfterCommit(paymentMapper.toResponse(payment));
+        }
+    }
+
+    @Override
     public PaymentResponse updatePaymentStatus(Long paymentId, String status, String reason) {
         Payment payment = findPayment(paymentId);
 

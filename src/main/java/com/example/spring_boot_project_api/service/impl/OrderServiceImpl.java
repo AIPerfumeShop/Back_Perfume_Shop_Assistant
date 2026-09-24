@@ -556,6 +556,9 @@ public class OrderServiceImpl implements OrderService {
             payment.setStatus(target);
             payment.setPaidAt(paidAt);
             payment.setErrorMessage(note);
+            if (target == PaymentStatus.SUCCESSFUL) {
+                paymentService.announceSuccessfulPayment(payment.getId());
+            }
         }
     }
 

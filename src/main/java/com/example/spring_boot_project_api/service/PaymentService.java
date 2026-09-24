@@ -84,4 +84,12 @@ public interface PaymentService {
      * that already settled the payment causes a false return).
      */
     boolean expirePayment(Long paymentId);
+
+    /**
+     * Send the "Payment Received" Telegram notification for a payment that has
+     * just become SUCCESSFUL, but only after the current transaction commits.
+     * Used by the CASH-on-delivery flow, which settles its payment directly
+     * (outside {@link #processPayment}) and would otherwise send no income alert.
+     */
+    void announceSuccessfulPayment(Long paymentId);
 }
