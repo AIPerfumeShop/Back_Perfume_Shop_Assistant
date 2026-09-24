@@ -45,8 +45,8 @@ public class BakongPaymentReconciliation {
                                        BakongProperties bakongProperties,
                                        @Value("${payment.bakong.payment-expiry-minutes:15}")
                                        long expiryMinutes,
-                                       @Value("${payment.bakong.min-check-interval-ms:60000}")
-                                       long minCheckIntervalMs) {
+@Value("${payment.bakong.min-check-interval-ms:180000}")
+                                        long minCheckIntervalMs) {
         this.paymentRepository = paymentRepository;
         this.paymentService = paymentService;
         this.orderService = orderService;

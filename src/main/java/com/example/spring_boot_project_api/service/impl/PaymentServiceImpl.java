@@ -57,6 +57,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final NotificationService notificationService;
     private final int maxDailyChecks;
     private final long minCheckIntervalMs;
+    private final int forcedVerifyReserve;
 
     // Bakong limits check_transaction_by_md5 to 100 requests/day. The frontend
     // auto-polls the verify endpoint every few seconds, so without guarding the
@@ -74,8 +75,10 @@ public class PaymentServiceImpl implements PaymentService {
                               NotificationService notificationService,
                               @Value("${payment.bakong.max-daily-checks:90}")
                               int maxDailyChecks,
-                              @Value("${payment.bakong.min-check-interval-ms:60000}")
-                              long minCheckIntervalMs) {
+                              @Value("${payment.bakong.min-check-interval-ms:180000}")
+                              long minCheckIntervalMs,
+                              @Value("${payment.bakong.forced-verify-reserve:10}")
+                              int forcedVerifyReserve) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.paymentMapper = paymentMapper;
@@ -85,6 +88,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.notificationService = notificationService;
         this.maxDailyChecks = maxDailyChecks;
         this.minCheckIntervalMs = minCheckIntervalMs;
+        this.forcedVerifyReserve = Math.max(0, Math.min(forcedVerifyReserve, maxDailyChecks));
     }
 
     @Override
@@ -381,8 +385,9 @@ public class PaymentServiceImpl implements PaymentService {
      * Decides whether a Bakong upstream call is allowed now. Guards the
      * 100-requests/day budget and the per-payment polling cadence. A
      * {@code force} check (customer clicking "I have paid") bypasses the
-     * per-payment interval so confirmation is immediate, but still never
-     * exceeds the daily budget.
+     * per-payment interval so confirmation is immediate. Automatic checks
+     * stop early so the last {@code forcedVerifyReserve} calls today are
+     * reserved for real, customer-confirmed payments.
      */
     private boolean allowBakongCheck(Long paymentId, boolean force) {
         LocalDate today = LocalDate.now();
@@ -408,6 +413,20 @@ public class PaymentServiceImpl implements PaymentService {
                     maxDailyChecks, bakongProperties.isConfigured()
                             ? bakongProperties.getMerchantId() : "merchant",
                     today.plusDays(1));
+            return false;
+        }
+
+        // Non-forced polling yields to paid-customer confirmations when only
+        // the reserve remains for today.
+        int autoQuota = Math.max(0, maxDailyChecks - forcedVerifyReserve);
+        if (!force && usedToday >= autoQuota) {
+            log.warn("Reached automatic check quota ({}/{}) for {}. "
+                            + "Reserving the remaining {} checks today for "
+                            + "customer-confirmed payments.",
+                    usedToday, maxDailyChecks,
+                    bakongProperties.isConfigured()
+                            ? bakongProperties.getMerchantId() : "merchant",
+                    forcedVerifyReserve);
             return false;
         }
 
