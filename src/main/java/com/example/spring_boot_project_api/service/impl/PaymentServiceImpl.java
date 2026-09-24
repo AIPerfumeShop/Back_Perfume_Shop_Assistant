@@ -30,8 +30,10 @@ import com.example.spring_boot_project_api.exception.BakongException;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.PaymentMapper;
+import com.example.spring_boot_project_api.model.AppSetting;
 import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.Payment;
+import com.example.spring_boot_project_api.repository.AppSettingRepository;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.service.BakongService;
@@ -55,6 +57,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final TelegramService telegramService;
     private final BakongProperties bakongProperties;
     private final NotificationService notificationService;
+    private final AppSettingRepository appSettingRepository;
     private final int maxDailyChecks;
     private final long minCheckIntervalMs;
     private final int forcedVerifyReserve;
@@ -62,9 +65,12 @@ public class PaymentServiceImpl implements PaymentService {
     // Bakong limits check_transaction_by_md5 to 100 requests/day. The frontend
     // auto-polls the verify endpoint every few seconds, so without guarding the
     // upstream call itself the budget is exhausted by a single pending order.
-    private final Map<LocalDate, Integer> dailyBakongChecks = new ConcurrentHashMap<>();
+    // Daily usage and the circuit-breaker are persisted in tb_app_settings so
+    // an application restart cannot reset the budget mid-day.
+    private static final String BAKONG_DAILY_CHECKS_PREFIX = "bakong.daily.checks.";
+    private static final String BAKONG_DAILY_SUSPEND_KEY = "bakong.daily.suspend-until";
+
     private final Map<Long, Instant> lastBakongApiCheck = new ConcurrentHashMap<>();
-    private volatile LocalDate dailyLimitDate;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               OrderRepository orderRepository,
@@ -73,6 +79,7 @@ public class PaymentServiceImpl implements PaymentService {
                               TelegramService telegramService,
                               BakongProperties bakongProperties,
                               NotificationService notificationService,
+                              AppSettingRepository appSettingRepository,
                               @Value("${payment.bakong.max-daily-checks:90}")
                               int maxDailyChecks,
                               @Value("${payment.bakong.min-check-interval-ms:180000}")
@@ -86,6 +93,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.telegramService = telegramService;
         this.bakongProperties = bakongProperties;
         this.notificationService = notificationService;
+        this.appSettingRepository = appSettingRepository;
         this.maxDailyChecks = maxDailyChecks;
         this.minCheckIntervalMs = minCheckIntervalMs;
         this.forcedVerifyReserve = Math.max(0, Math.min(forcedVerifyReserve, maxDailyChecks));
@@ -332,14 +340,9 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (isDailyLimitExceeded(bakongResponse)) {
             // Close the circuit for the rest of the day: further retries would
-            // only burn requests that can never succeed. The check above makes
-            // every later poll return quickly without hitting the API.
-            dailyLimitDate = LocalDate.now();
-            log.error("Bakong daily verification limit ({}) reached for {}. "
-                            + "Suspending automatic KHQR checks until {}",
-                    maxDailyChecks, bakongProperties.isConfigured()
-                            ? bakongProperties.getMerchantId() : "merchant",
-                    dailyLimitDate.plusDays(1));
+            // only burn requests that can never succeed. The circuit above
+            // makes every later poll return quickly without hitting the API.
+            suspendBakongChecks();
         }
 
         if (bakongResponse != null && bakongResponse.isSuccess()) {
@@ -392,7 +395,7 @@ public class PaymentServiceImpl implements PaymentService {
     private boolean allowBakongCheck(Long paymentId, boolean force) {
         LocalDate today = LocalDate.now();
 
-        if (today.equals(dailyLimitDate)) {
+        if (isDailyCircuitOpen()) {
             return false;
         }
 
@@ -405,14 +408,9 @@ public class PaymentServiceImpl implements PaymentService {
             }
         }
 
-        int usedToday = dailyBakongChecks.getOrDefault(today, 0);
+        int usedToday = dailyChecksUsed(today);
         if (usedToday >= maxDailyChecks) {
-            dailyLimitDate = today;
-            log.error("Bakong daily verification limit ({}) reached for {}. "
-                            + "Suspending automatic KHQR checks until {}",
-                    maxDailyChecks, bakongProperties.isConfigured()
-                            ? bakongProperties.getMerchantId() : "merchant",
-                    today.plusDays(1));
+            suspendBakongChecks();
             return false;
         }
 
@@ -430,9 +428,54 @@ public class PaymentServiceImpl implements PaymentService {
             return false;
         }
 
-        dailyBakongChecks.merge(today, 1, Integer::sum);
+        appSettingRepository.incrementCounter(BAKONG_DAILY_CHECKS_PREFIX + today);
         lastBakongApiCheck.put(paymentId, Instant.now());
         return true;
+    }
+
+    private int dailyChecksUsed(LocalDate day) {
+        return appSettingRepository
+                .findBySettingKey(BAKONG_DAILY_CHECKS_PREFIX + day)
+                .map(s -> parseIntOrZero(s.getSettingValue()))
+                .orElse(0);
+    }
+
+    private boolean isDailyCircuitOpen() {
+        return appSettingRepository.findBySettingKey(BAKONG_DAILY_SUSPEND_KEY)
+                .map(s -> LocalDate.now().equals(parseDateOrNull(s.getSettingValue())))
+                .orElse(false);
+    }
+
+    private void suspendBakongChecks() {
+        LocalDate today = LocalDate.now();
+        AppSetting circuit = appSettingRepository
+                .findBySettingKey(BAKONG_DAILY_SUSPEND_KEY)
+                .orElseGet(AppSetting::new);
+        circuit.setSettingKey(BAKONG_DAILY_SUSPEND_KEY);
+        circuit.setSettingValue(today.toString());
+        appSettingRepository.save(circuit);
+
+        log.error("Bakong daily verification limit ({}) reached for {}. "
+                        + "Suspending automatic KHQR checks until {}",
+                maxDailyChecks, bakongProperties.isConfigured()
+                        ? bakongProperties.getMerchantId() : "merchant",
+                today.plusDays(1));
+    }
+
+    private static int parseIntOrZero(String value) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static LocalDate parseDateOrNull(String value) {
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean isDailyLimitExceeded(BakongResponse response) {
