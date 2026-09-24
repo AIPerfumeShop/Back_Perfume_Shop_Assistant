@@ -3,9 +3,15 @@ package com.example.spring_boot_project_api.service.impl;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import javax.sql.DataSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +41,21 @@ public class BakongPaymentReconciliation {
     private final PaymentService paymentService;
     private final OrderService orderService;
     private final BakongProperties bakongProperties;
+    private final DataSource dataSource;
     private final long expiryMinutes;
     private final long minCheckIntervalMs;
     private final Map<Long, Instant> lastChecked = new ConcurrentHashMap<>();
+
+    // Cross-instance MySQL advisory lock so only one backend instance runs the
+    // KHQR reconciliation at a time. Prevents two instances from duplicating
+    // Bakong API checks (burning the daily budget) and redundant notifications.
+    private static final String RECONCILE_LOCK = "bakong_payment_reconciliation";
 
     public BakongPaymentReconciliation(PaymentRepository paymentRepository,
                                        PaymentService paymentService,
                                        OrderService orderService,
                                        BakongProperties bakongProperties,
+                                       DataSource dataSource,
                                        @Value("${payment.bakong.payment-expiry-minutes:15}")
                                        long expiryMinutes,
 @Value("${payment.bakong.min-check-interval-ms:180000}")
@@ -51,6 +64,7 @@ public class BakongPaymentReconciliation {
         this.paymentService = paymentService;
         this.orderService = orderService;
         this.bakongProperties = bakongProperties;
+        this.dataSource = dataSource;
         this.expiryMinutes = expiryMinutes;
         this.minCheckIntervalMs = minCheckIntervalMs;
     }
@@ -64,6 +78,27 @@ public class BakongPaymentReconciliation {
             return;
         }
 
+        // GET_LOCK is connection-scoped, so acquire and release on the same
+        // connection. Holding the lock for the duration of the tick keeps a
+        // second backend instance from polling the same payments meanwhile.
+        try (Connection connection = dataSource.getConnection()) {
+            if (!acquireLock(connection)) {
+                log.debug("Another instance holds the reconciliation lock; "
+                        + "skipping this tick");
+                return;
+            }
+            try {
+                reconcilePendingPayments();
+            } finally {
+                releaseLock(connection);
+            }
+        } catch (SQLException e) {
+            log.warn("Could not acquire reconciliation lock; skipping tick: {}",
+                    e.getMessage());
+        }
+    }
+
+    private void reconcilePendingPayments() {
         List<Payment> pending = paymentRepository
                 .findAllByStatusAndMd5IsNotNull(PaymentStatus.PENDING);
 
@@ -137,5 +172,23 @@ public class BakongPaymentReconciliation {
 
         log.info("Expired unpaid KHQR payment {} for order {}",
                 payment.getId(), orderId);
+    }
+
+    private boolean acquireLock(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT GET_LOCK(?, 0)")) {
+            statement.setString(1, RECONCILE_LOCK);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() && resultSet.getInt(1) == 1;
+            }
+        }
+    }
+
+    private void releaseLock(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT RELEASE_LOCK(?)")) {
+            statement.setString(1, RECONCILE_LOCK);
+            statement.executeQuery();
+        }
     }
 }

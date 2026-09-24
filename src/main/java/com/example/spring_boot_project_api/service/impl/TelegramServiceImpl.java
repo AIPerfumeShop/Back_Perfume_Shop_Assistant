@@ -1,22 +1,14 @@
 package com.example.spring_boot_project_api.service.impl;
 
-import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.example.spring_boot_project_api.config.TelegramBotProperties;
-import com.example.spring_boot_project_api.dto.response.order.OrderItemResponse;
-import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
-import com.example.spring_boot_project_api.enums.OrderStatus;
-import com.example.spring_boot_project_api.model.Order;
-import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.model.OrderItem;
-import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
@@ -100,11 +92,6 @@ public class TelegramServiceImpl implements TelegramService {
     }
 
     @Override
-    public void sendOrderNotification(OrderResponse order) {
-        sendMessage(buildOrderNotification(order));
-    }
-
-    @Override
     public void sendPaymentNotification(PaymentResponse payment) {
         sendMessage(buildPaymentNotification(payment));
     }
@@ -167,65 +154,6 @@ public class TelegramServiceImpl implements TelegramService {
                             : name;
                 })
                 .orElse("User #" + userId);
-    }
-
-    private String buildOrderNotification(OrderResponse order) {
-        StringBuilder text = new StringBuilder("🛒 New Order Received!")
-                .append("\n\nOrder Number: ORD-").append(order.getId())
-                .append("\nUser: ").append(formatUser(order))
-                .append("\nPhone: ").append(nullToNa(order.getPhone()))
-                .append("\nAddress: ").append(nullToNa(order.getShippingAddress()));
-
-        if (order.getItems() != null && !order.getItems().isEmpty()) {
-            text.append("\n\nItems:");
-            for (OrderItemResponse item : order.getItems()) {
-                text.append("\n• ").append(item.getProductName());
-                if (item.getVariantSize() != null) {
-                    text.append(" [").append(item.getVariantSize()).append("]");
-                }
-                text.append("\n   Qty: ").append(item.getQuantity())
-                        .append("\n   Price: $").append(item.getUnitPrice());
-            }
-        }
-
-        text.append("\n\nSubtotal: $").append(computeSubtotal(order.getItems()))
-                .append("\nTotal: $").append(order.getTotalAmount())
-                .append("\n\nPayment Method: ").append(formatPaymentMethod(order))
-                .append("\nOrder Date: ").append(order.getCreatedAt() != null
-                        ? order.getCreatedAt().format(DATE_TIME)
-                        : "N/A");
-        return text.toString();
-    }
-
-    private String formatUser(OrderResponse order) {
-        String name = order.getUserName() != null ? order.getUserName() : "User #" + order.getUserId();
-        String email = null;
-        if (order.getUserId() != null) {
-            email = userRepository.findById(order.getUserId())
-                    .map(User::getEmail)
-                    .orElse(null);
-        }
-        return email != null ? name + " (" + email + ")" : name;
-    }
-
-    private String formatPaymentMethod(OrderResponse order) {
-        if (order.getId() == null) {
-            return "N/A";
-        }
-        return paymentRepository.findByOrderId(order.getId())
-                .map(Payment::getPaymentMethod)
-                .map(Enum::name)
-                .orElse("N/A");
-    }
-
-    private BigDecimal computeSubtotal(List<OrderItemResponse> items) {
-        if (items == null || items.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        return items.stream()
-                .map(OrderItemResponse::getSubtotal)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private String nullToNa(String value) {
