@@ -1,12 +1,17 @@
 package com.example.spring_boot_project_api.service.impl;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -50,6 +55,15 @@ public class PaymentServiceImpl implements PaymentService {
     private final TelegramService telegramService;
     private final BakongProperties bakongProperties;
     private final NotificationService notificationService;
+    private final int maxDailyChecks;
+    private final long minCheckIntervalMs;
+
+    // Bakong limits check_transaction_by_md5 to 100 requests/day. The frontend
+    // auto-polls the verify endpoint every few seconds, so without guarding the
+    // upstream call itself the budget is exhausted by a single pending order.
+    private final Map<LocalDate, Integer> dailyBakongChecks = new ConcurrentHashMap<>();
+    private final Map<Long, Instant> lastBakongApiCheck = new ConcurrentHashMap<>();
+    private volatile LocalDate dailyLimitDate;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               OrderRepository orderRepository,
@@ -57,7 +71,11 @@ public class PaymentServiceImpl implements PaymentService {
                               BakongService bakongService,
                               TelegramService telegramService,
                               BakongProperties bakongProperties,
-                              NotificationService notificationService) {
+                              NotificationService notificationService,
+                              @Value("${payment.bakong.max-daily-checks:90}")
+                              int maxDailyChecks,
+                              @Value("${payment.bakong.min-check-interval-ms:60000}")
+                              long minCheckIntervalMs) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.paymentMapper = paymentMapper;
@@ -65,6 +83,8 @@ public class PaymentServiceImpl implements PaymentService {
         this.telegramService = telegramService;
         this.bakongProperties = bakongProperties;
         this.notificationService = notificationService;
+        this.maxDailyChecks = maxDailyChecks;
+        this.minCheckIntervalMs = minCheckIntervalMs;
     }
 
     @Override
@@ -269,6 +289,11 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponse verifyBakongPayment(Long paymentId) {
+        return verifyBakongPayment(paymentId, false);
+    }
+
+    @Override
+    public PaymentResponse verifyBakongPayment(Long paymentId, boolean force) {
         Payment payment = findPayment(paymentId);
 
         // Already terminal: return current status idempotently instead of
@@ -282,6 +307,13 @@ public class PaymentServiceImpl implements PaymentService {
                     "Payment has no KHQR code attached");
         }
 
+        if (bakongProperties.isConfigured()
+                && !allowBakongCheck(paymentId, force)) {
+            // Upstream budget exhausted or this payment was just checked:
+            // answer with the stored status instead of calling Bakong again.
+            return paymentMapper.toResponse(findPayment(paymentId));
+        }
+
         log.info("Verifying payment {} with Bakong API (md5={})",
                 paymentId, payment.getMd5() != null ? payment.getMd5().substring(0, Math.min(8, payment.getMd5().length())) + "..." : "null");
 
@@ -293,6 +325,18 @@ public class PaymentServiceImpl implements PaymentService {
                 bakongResponse != null ? bakongResponse.isSuccess() : "null",
                 bakongResponse != null ? bakongResponse.responseCode() : "null",
                 bakongResponse != null ? bakongResponse.data() : "null");
+
+        if (isDailyLimitExceeded(bakongResponse)) {
+            // Close the circuit for the rest of the day: further retries would
+            // only burn requests that can never succeed. The check above makes
+            // every later poll return quickly without hitting the API.
+            dailyLimitDate = LocalDate.now();
+            log.error("Bakong daily verification limit ({}) reached for {}. "
+                            + "Suspending automatic KHQR checks until {}",
+                    maxDailyChecks, bakongProperties.isConfigured()
+                            ? bakongProperties.getMerchantId() : "merchant",
+                    dailyLimitDate.plusDays(1));
+        }
 
         if (bakongResponse != null && bakongResponse.isSuccess()) {
             LocalDateTime paidAt = LocalDateTime.now();
@@ -314,6 +358,7 @@ public class PaymentServiceImpl implements PaymentService {
                 payment.setStatus(PaymentStatus.SUCCESSFUL);
                 payment.setPaidAt(paidAt);
                 payment.setExternalRef(externalRef);
+                lastBakongApiCheck.remove(paymentId);
 
                 Order order = payment.getOrder();
                 if (order != null) {
@@ -330,6 +375,56 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return paymentMapper.toResponse(findPayment(paymentId));
+    }
+
+    /**
+     * Decides whether a Bakong upstream call is allowed now. Guards the
+     * 100-requests/day budget and the per-payment polling cadence. A
+     * {@code force} check (customer clicking "I have paid") bypasses the
+     * per-payment interval so confirmation is immediate, but still never
+     * exceeds the daily budget.
+     */
+    private boolean allowBakongCheck(Long paymentId, boolean force) {
+        LocalDate today = LocalDate.now();
+
+        if (today.equals(dailyLimitDate)) {
+            return false;
+        }
+
+        if (!force) {
+            Instant lastCheck = lastBakongApiCheck.get(paymentId);
+            if (lastCheck != null
+                    && Duration.between(lastCheck, Instant.now()).toMillis()
+                            < minCheckIntervalMs) {
+                return false;
+            }
+        }
+
+        int usedToday = dailyBakongChecks.getOrDefault(today, 0);
+        if (usedToday >= maxDailyChecks) {
+            dailyLimitDate = today;
+            log.error("Bakong daily verification limit ({}) reached for {}. "
+                            + "Suspending automatic KHQR checks until {}",
+                    maxDailyChecks, bakongProperties.isConfigured()
+                            ? bakongProperties.getMerchantId() : "merchant",
+                    today.plusDays(1));
+            return false;
+        }
+
+        dailyBakongChecks.merge(today, 1, Integer::sum);
+        lastBakongApiCheck.put(paymentId, Instant.now());
+        return true;
+    }
+
+    private boolean isDailyLimitExceeded(BakongResponse response) {
+        if (response == null) {
+            return false;
+        }
+        if (response.errorCode() != null && response.errorCode() == 17) {
+            return true;
+        }
+        return response.responseMessage() != null
+                && response.responseMessage().toLowerCase().contains("limit");
     }
 
     @Override

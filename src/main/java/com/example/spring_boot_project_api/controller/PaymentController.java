@@ -124,7 +124,9 @@ public class PaymentController {
     })
     @PostMapping("/{id}/verify")
     public ResponseEntity<PaymentResponse> verifyBakongPayment(
-            @PathVariable Long id) {
+            @PathVariable Long id,
+            @RequestParam(value = "force", defaultValue = "false")
+            boolean force) {
         Long userId = SecurityUtils.currentUserId()
                 .orElseThrow(() ->
                         new UnauthorizedException("Authentication required"));
@@ -138,7 +140,7 @@ public class PaymentController {
         }
 
         return ResponseEntity.ok(
-                paymentService.verifyBakongPayment(id));
+                paymentService.verifyBakongPayment(id, force));
     }
 
     //Payment history by order

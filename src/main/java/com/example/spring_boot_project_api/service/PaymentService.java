@@ -56,6 +56,14 @@ public interface PaymentService {
     PaymentResponse verifyBakongPayment(Long paymentId);
 
     /**
+     * Like {@link #verifyBakongPayment(Long)} but with an explicit
+     * {@code force} flag: a forced check (customer clicked "I have paid")
+     * bypasses the per-payment polling interval so confirmation is
+     * immediate. The daily Bakong budget still applies.
+     */
+    PaymentResponse verifyBakongPayment(Long paymentId, boolean force);
+
+    /**
      * List the payment history for a given order.
      */
     List<PaymentResponse> getPaymentHistoryByOrder(Long orderId);
