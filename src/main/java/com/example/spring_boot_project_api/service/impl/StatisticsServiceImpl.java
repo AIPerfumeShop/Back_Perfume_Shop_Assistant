@@ -99,7 +99,8 @@ public class StatisticsServiceImpl implements StatisticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        return orderItemRepository.findBrandPerformance(start, end).stream()
+        return orderItemRepository.findBrandPerformance(
+                        start, end, OrderStatus.CANCELLED).stream()
                 .map(this::toBrandPerformanceResponse)
                 .toList();
     }
