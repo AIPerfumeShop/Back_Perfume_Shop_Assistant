@@ -176,13 +176,14 @@ public class OrderServiceImpl implements OrderService {
                 .toList();
 
         // Batch-fetch latest payment for each order (avoids N+1)
-        Map<Long, Payment> paymentByOrderId = paymentRepository
-                .findLatestByOrderIds(orderIds)
+        Map<Long, Payment> paymentByOrderId = orderIds.isEmpty()
+            ? java.util.Collections.emptyMap()
+            : paymentRepository.findLatestByOrderIds(orderIds)
                 .stream()
                 .collect(java.util.stream.Collectors.toMap(
-                        p -> p.getOrder().getId(),
-                        p -> p,
-                        (a, b) -> a // keep first (most recent)
+                    p -> p.getOrder().getId(),
+                    p -> p,
+                    (a, b) -> a // keep first (most recent)
                 ));
 
         List<AdminOrderSummaryResponse> content = orders.getContent().stream()
@@ -603,5 +604,10 @@ public class OrderServiceImpl implements OrderService {
                     return response;
                 })
                 .toList();
+    }
+
+    @Override
+    public List<OrderStatusHistoryResponse> getOrderStatusHistoryAdmin(Long orderId) {
+        return getOrderStatusHistory(orderId, null);
     }
 }

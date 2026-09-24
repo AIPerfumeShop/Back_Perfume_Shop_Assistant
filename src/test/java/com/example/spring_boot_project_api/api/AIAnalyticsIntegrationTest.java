@@ -1,7 +1,11 @@
 package com.example.spring_boot_project_api.api;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.springframework.http.MediaType;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,4 +88,38 @@ class AIAnalyticsIntegrationTest {
         mockMvc.perform(get("/api/ai/analytics/popular-questions").header("Authorization", adminBearer))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void adminBusinessIntelligenceEndpoints_respondOnEmptyData() throws Exception {
+        mockMvc.perform(get("/api/admin/ai-analytics/conversion").header("Authorization", adminBearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalOrders").value(0))
+                .andExpect(jsonPath("$.eventTrackingAvailable").value(false));
+        mockMvc.perform(get("/api/admin/ai-analytics/customer-intelligence")
+                        .header("Authorization", adminBearer))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/ai-analytics/business-briefing")
+                        .header("Authorization", adminBearer))
+                .andExpect(status().isOk());
+    }
+
+                @Test
+                void storefrontAnalyticsEvent_canBeRecordedWithoutAuthentication() throws Exception {
+                                mockMvc.perform(post("/api/analytics/events")
+                                                                                                .contentType(MediaType.APPLICATION_JSON)
+                                                                                                .content("""
+                                                                                                                                {
+                                                                                                                                        "eventType": "PRODUCT_VIEW",
+                                                                                                                                        "visitorId": "visitor-123",
+                                                                                                                                        "sessionId": "session-123"
+                                                                                                                                }
+                                                                                                                                """))
+                                                                .andExpect(status().isAccepted());
+
+                                                                                                                        mockMvc.perform(get("/api/admin/ai-analytics/conversion")
+                                                                                                                                        .header("Authorization", adminBearer))
+                                                                                                                                .andExpect(status().isOk())
+                                                                                                                                .andExpect(jsonPath("$.eventTrackingAvailable").value(true))
+                                                                                                                                .andExpect(jsonPath("$.productViews").value(1));
+                }
 }

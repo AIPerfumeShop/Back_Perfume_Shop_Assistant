@@ -17,6 +17,7 @@ import com.example.spring_boot_project_api.dto.request.order.UpdateOrderStatusRe
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.order.AdminOrderSummaryResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
+import com.example.spring_boot_project_api.dto.response.order.OrderStatusHistoryResponse;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.service.OrderService;
 import com.example.spring_boot_project_api.service.PaymentService;
@@ -59,6 +60,13 @@ public class AdminOrderController {
         OrderResponse response = orderService.getOrderByIdAdmin(id);
         return ResponseEntity.ok(response);
     }
+
+        @Operation(summary = "Get order tracking timeline (admin)")
+        @GetMapping("/{id}/tracking")
+        public ResponseEntity<java.util.List<OrderStatusHistoryResponse>> getOrderTracking(
+                        @PathVariable Long id) {
+                return ResponseEntity.ok(orderService.getOrderStatusHistoryAdmin(id));
+        }
 
     //Update order status
     @Operation(summary = "Update order status (admin)")

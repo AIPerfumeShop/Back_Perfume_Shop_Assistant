@@ -51,6 +51,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/change-email/**").authenticated()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/dashboard/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/analytics/events").permitAll()
                 .requestMatchers("/api/analytics/**").hasRole("ADMIN")
                 .requestMatchers("/api/statistics/**").hasRole("ADMIN")
                 .requestMatchers("/api/ai/analytics/**").hasRole("ADMIN")

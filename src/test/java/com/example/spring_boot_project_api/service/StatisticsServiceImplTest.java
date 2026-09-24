@@ -56,9 +56,9 @@ class StatisticsServiceImplTest {
             }
         };
 
-        when(orderRepository.sumTotalAmountBetween(any(), any())).thenReturn(new BigDecimal("1000.00"));
-        when(orderRepository.countByCreatedAtBetween(any(), any())).thenReturn(10L);
-        when(orderItemRepository.sumQuantityBetween(any(), any())).thenReturn(5L);
+        when(orderRepository.sumTotalAmountBetween(any(), any(), any())).thenReturn(new BigDecimal("1000.00"));
+        when(orderRepository.countByCreatedAtBetween(any(), any(), any())).thenReturn(10L);
+        when(orderItemRepository.sumQuantityBetween(any(), any(), any())).thenReturn(5L);
         when(reviewRepository.findRatingSummary()).thenReturn(rating);
 
         ProductStatisticsResponse response = statisticsService.getOverview(new AnalyticsFilterRequest());
@@ -73,9 +73,9 @@ class StatisticsServiceImplTest {
 
     @Test
     void getOverview_noOrders_averageOrderValueIsZero() {
-        when(orderRepository.sumTotalAmountBetween(any(), any())).thenReturn(BigDecimal.ZERO);
-        when(orderRepository.countByCreatedAtBetween(any(), any())).thenReturn(0L);
-        when(orderItemRepository.sumQuantityBetween(any(), any())).thenReturn(0L);
+        when(orderRepository.sumTotalAmountBetween(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.countByCreatedAtBetween(any(), any(), any())).thenReturn(0L);
+        when(orderItemRepository.sumQuantityBetween(any(), any(), any())).thenReturn(0L);
         when(reviewRepository.findRatingSummary()).thenReturn(null);
 
         ProductStatisticsResponse response = statisticsService.getOverview(new AnalyticsFilterRequest());

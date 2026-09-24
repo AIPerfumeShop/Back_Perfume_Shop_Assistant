@@ -98,6 +98,41 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
                                              @Param("cancelled") OrderStatus cancelled,
                                              Pageable pageable);
 
+    @Query("""
+            select distinct o.user.id
+            from Order o
+            where o.createdAt >= :start and o.createdAt < :end
+              and o.status <> :cancelled
+            """)
+    List<Long> findDistinctCustomerIdsBetween(@Param("start") LocalDateTime start,
+                                              @Param("end") LocalDateTime end,
+                                              @Param("cancelled") OrderStatus cancelled);
+
+    @Query("""
+            select o.user.id as userId,
+                   count(distinct o.id) as orderCount,
+                   count(distinct oi.productName) as uniqueProducts,
+                   coalesce(sum(o.totalAmount), 0) as totalSpent,
+                   max(o.createdAt) as lastOrderAt
+            from Order o
+            left join o.items oi
+            where o.createdAt >= :start and o.createdAt < :end
+              and o.status <> :cancelled
+            group by o.user.id
+            """)
+    List<CustomerAggregateStat> findCustomerAggregatesBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("cancelled") OrderStatus cancelled);
+
+    interface CustomerAggregateStat {
+        Long getUserId();
+        Long getOrderCount();
+        Long getUniqueProducts();
+        BigDecimal getTotalSpent();
+        LocalDateTime getLastOrderAt();
+    }
+
     interface OrderStatusStat {
         OrderStatus getStatus();
         Long getOrderCount();

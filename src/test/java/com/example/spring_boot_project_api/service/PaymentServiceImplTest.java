@@ -14,9 +14,9 @@ import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -35,6 +35,7 @@ import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
+import com.example.spring_boot_project_api.repository.AppSettingRepository;
 import com.example.spring_boot_project_api.service.BakongService;
 import com.example.spring_boot_project_api.service.impl.PaymentServiceImpl;
 
@@ -66,8 +67,19 @@ class PaymentServiceImplTest {
     @Mock
     private NotificationService notificationService;
 
-    @InjectMocks
+    @Mock
+    private AppSettingRepository appSettingRepository;
+
     private PaymentServiceImpl paymentService;
+
+    @BeforeEach
+    void setUp() {
+        paymentService = new PaymentServiceImpl(
+                paymentRepository, orderRepository, paymentMapper,
+                bakongService, telegramService, bakongProperties,
+                notificationService, appSettingRepository,
+                90, 180_000L, 10);
+    }
 
     private Payment newPayment(Order order, PaymentStatus status) {
         Payment payment = new Payment();
@@ -130,6 +142,18 @@ class PaymentServiceImplTest {
     }
 
     @Test
+    void createPayment_legacyMethodsAreRejectedForNewPayments() {
+        for (String legacyMethod : new String[] { "ACLEDA", "ABA" }) {
+            PaymentRequest request = new PaymentRequest();
+            request.setOrderId(10L);
+            request.setPaymentMethod(legacyMethod);
+
+            assertThrows(BadRequestException.class,
+                    () -> paymentService.createPayment(request));
+        }
+    }
+
+    @Test
     void createPayment_orderNotFound_throwsResourceNotFound() {
         when(orderRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -175,6 +199,7 @@ class PaymentServiceImplTest {
     void processPayment_success_updatesStatusAndPaidAt() {
         Order order = newOrder();
         Payment payment = newPayment(order, PaymentStatus.PENDING);
+        payment.setPaymentMethod(PaymentMethod.KHQR);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(paymentRepository.transitionFromPending(
                 any(), any(), any(), any())).thenReturn(1);
@@ -189,6 +214,7 @@ class PaymentServiceImplTest {
     @Test
     void processPayment_invalidAmount_fails() {
         Payment payment = newPayment(newOrder(), PaymentStatus.PENDING);
+        payment.setPaymentMethod(PaymentMethod.KHQR);
         payment.setAmount(null);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(paymentRepository.transitionFromPending(
@@ -216,7 +242,9 @@ class PaymentServiceImplTest {
     void processPayment_concurrentRace_returnsCurrentOutcome() {
         Order order = newOrder();
         Payment payment = newPayment(order, PaymentStatus.PENDING);
+        payment.setPaymentMethod(PaymentMethod.KHQR);
         Payment alreadySuccessful = newPayment(order, PaymentStatus.SUCCESSFUL);
+        alreadySuccessful.setPaymentMethod(PaymentMethod.KHQR);
         when(paymentRepository.findById(1L))
                 .thenReturn(Optional.of(payment))
                 .thenReturn(Optional.of(alreadySuccessful));

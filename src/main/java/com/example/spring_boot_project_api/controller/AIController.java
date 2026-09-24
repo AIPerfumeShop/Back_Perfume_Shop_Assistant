@@ -19,12 +19,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
 import com.example.spring_boot_project_api.dto.request.ai.RenameConversationRequest;
+import com.example.spring_boot_project_api.dto.request.ai.ScentConciergeRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
+import com.example.spring_boot_project_api.dto.response.ai.ScentConciergeResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.AIService;
+import com.example.spring_boot_project_api.service.ScentConciergeService;
 import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,8 +39,11 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/ai")
 public class AIController {
     private final AIService aiService;
-    public AIController(AIService aiService){
+    private final ScentConciergeService scentConciergeService;
+
+    public AIController(AIService aiService, ScentConciergeService scentConciergeService){
         this.aiService = aiService;
+        this.scentConciergeService = scentConciergeService;
     }
 
     private Long currentUserId() {
@@ -85,6 +91,16 @@ public class AIController {
         });
 
         return emitter;
+    }
+
+    @Operation(summary = "Scent Concierge - describe what you want, get matched perfumes")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Matching perfumes found")
+    })
+    @PostMapping("/scent-concierge")
+    public ResponseEntity<ScentConciergeResponse> scentConcierge(
+            @Valid @RequestBody ScentConciergeRequest request){
+        return ResponseEntity.ok(scentConciergeService.recommend(currentUserId(), request));
     }
 
     //get all conversations of the authenticated user

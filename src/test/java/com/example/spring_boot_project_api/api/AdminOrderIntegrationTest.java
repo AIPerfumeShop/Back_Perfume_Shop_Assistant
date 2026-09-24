@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.config.JwtTokenProvider;
 import com.example.spring_boot_project_api.enums.Role;
+import com.example.spring_boot_project_api.enums.PaymentMethod;
+import com.example.spring_boot_project_api.enums.PaymentStatus;
 import com.example.spring_boot_project_api.model.Brand;
 import com.example.spring_boot_project_api.model.Category;
 import com.example.spring_boot_project_api.model.Order;
@@ -33,6 +35,7 @@ import com.example.spring_boot_project_api.repository.CategoryRepository;
 import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
+import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.EmailService;
 
@@ -59,6 +62,9 @@ class AdminOrderIntegrationTest {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -133,6 +139,43 @@ class AdminOrderIntegrationTest {
                 .andExpect(status().isCreated());
         return orderRepository.findByUserIdOrderByCreatedAtDesc(customer.getId()).get(0).getId();
     }
+
+    @Test
+    void getAllOrders_returnsEmptyPageWithoutPaymentQueryFailure() throws Exception {
+        mockMvc.perform(get("/api/admin/orders?page=1&size=10&sort=createdAt&direction=desc")
+                        .header("Authorization", bearer(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+            @Test
+            void getAllOrders_readsLegacyBankPaymentMethods() throws Exception {
+            Long orderId = createOrder(customerOne, 1);
+            Order order = orderRepository.findById(orderId).orElseThrow();
+
+            com.example.spring_boot_project_api.model.Payment payment =
+                new com.example.spring_boot_project_api.model.Payment();
+            payment.setOrder(order);
+            payment.setPaymentMethod(PaymentMethod.ACLEDA);
+            payment.setAmount(order.getTotalAmount());
+            payment.setStatus(PaymentStatus.PENDING);
+            paymentRepository.save(payment);
+
+            Order secondOrder = orderRepository.findById(createOrder(customerTwo, 1)).orElseThrow();
+            com.example.spring_boot_project_api.model.Payment secondPayment =
+                new com.example.spring_boot_project_api.model.Payment();
+            secondPayment.setOrder(secondOrder);
+            secondPayment.setPaymentMethod(PaymentMethod.ABA);
+            secondPayment.setAmount(secondOrder.getTotalAmount());
+            secondPayment.setStatus(PaymentStatus.PENDING);
+            paymentRepository.save(secondPayment);
+
+            mockMvc.perform(get("/api/admin/orders?page=0&size=10")
+                    .header("Authorization", bearer(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+            }
 
     @Test
     void adminEndpoints_requireAdminRole() throws Exception {

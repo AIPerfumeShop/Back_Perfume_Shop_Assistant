@@ -51,4 +51,6 @@ public interface OrderService {
 
     //Status history for an order, with ownership check
     List<OrderStatusHistoryResponse> getOrderStatusHistory(Long orderId, Long userId);
+
+    List<OrderStatusHistoryResponse> getOrderStatusHistoryAdmin(Long orderId);
 }

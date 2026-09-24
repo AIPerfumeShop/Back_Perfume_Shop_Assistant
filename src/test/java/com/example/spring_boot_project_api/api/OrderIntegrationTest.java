@@ -36,8 +36,18 @@ import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
+import com.example.spring_boot_project_api.service.BakongService;
 import com.example.spring_boot_project_api.service.EmailService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import kh.gov.nbc.bakong_khqr.model.KHQRData;
+import kh.gov.nbc.bakong_khqr.model.KHQRResponse;
+import kh.gov.nbc.bakong_khqr.model.KHQRStatus;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
+import org.mockito.Mockito;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -72,6 +82,9 @@ class OrderIntegrationTest {
     @MockitoBean
     private EmailService emailService;
 
+    @MockitoBean
+    private BakongService bakongService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private Long variantId;
@@ -80,6 +93,16 @@ class OrderIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        KHQRData data = new KHQRData();
+        data.setQr("00020101021XKHQR");
+        data.setMd5("abc123");
+        KHQRStatus status = new KHQRStatus();
+        status.setCode(0);
+        KHQRResponse<KHQRData> qrResponse = new KHQRResponse<>();
+        qrResponse.setKHQRStatus(status);
+        qrResponse.setData(data);
+        when(bakongService.generateQR(any())).thenReturn(qrResponse);
+
         Category category = new Category();
         category.setName("Perfume");
         categoryRepository.save(category);
@@ -173,7 +196,7 @@ class OrderIntegrationTest {
     }
 
     @Test
-    void checkout_withCash_createsSuccessfulPayment() throws Exception {
+    void checkout_withCash_createsPendingPayment() throws Exception {
         String payload = orderPayload(2).replace("}",
                 ",\"city\":\"Phnom Penh\",\"paymentMethod\":\"CASH\"}");
 
@@ -184,7 +207,7 @@ class OrderIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.orderStatus").value("PENDING"))
                 .andExpect(jsonPath("$.paymentMethod").value("CASH"))
-                .andExpect(jsonPath("$.paymentStatus").value("SUCCESSFUL"))
+                .andExpect(jsonPath("$.paymentStatus").value("PENDING"))
                 .andExpect(jsonPath("$.totalAmount").value(100.0));
     }
 
@@ -210,7 +233,7 @@ class OrderIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.paymentStatus").value("SUCCESSFUL"))
+                .andExpect(jsonPath("$.paymentStatus").value("PENDING"))
                 .andReturn().getResponse().getContentAsString();
 
         long firstOrderId = objectMapper.readTree(first).get("orderId").asLong();
@@ -223,7 +246,7 @@ class OrderIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.paymentStatus").value("SUCCESSFUL"))
+                .andExpect(jsonPath("$.paymentStatus").value("PENDING"))
                 .andReturn().getResponse().getContentAsString();
 
         assertEquals(firstOrderId, objectMapper.readTree(second).get("orderId").asLong());
@@ -234,7 +257,7 @@ class OrderIntegrationTest {
     @Test
     void checkout_paymentProcess_isIdempotent() throws Exception {
         String payload = orderPayload(2).replace("}",
-                ",\"city\":\"Phnom Penh\",\"paymentMethod\":\"CASH\"}");
+                ",\"city\":\"Phnom Penh\",\"paymentMethod\":\"KHQR\"}");
 
         String created = mockMvc.perform(post("/api/orders/checkout")
                         .header("Authorization", bearer(customer))

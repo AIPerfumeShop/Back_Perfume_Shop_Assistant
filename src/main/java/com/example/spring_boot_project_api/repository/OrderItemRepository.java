@@ -96,6 +96,25 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                                                     @Param("cancelled") OrderStatus cancelled);
 
     @Query("""
+            select fp.fragranceFamily as fragranceFamily,
+                   sum(oi.quantity) as quantitySold,
+                   sum(oi.subtotal) as totalRevenue
+            from OrderItem oi
+            join oi.variant v
+            join v.product p
+            join p.fragranceProfile fp
+            where oi.order.createdAt >= :start and oi.order.createdAt < :end
+              and oi.order.status <> :cancelled
+              and fp.fragranceFamily is not null and fp.fragranceFamily <> ''
+            group by fp.fragranceFamily
+            order by sum(oi.subtotal) desc
+            """)
+    List<FragranceFamilyPerformanceStat> findFragranceFamilyPerformance(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("cancelled") OrderStatus cancelled);
+
+    @Query("""
             select coalesce(sum(oi.quantity), 0)
             from OrderItem oi
             where oi.order.createdAt >= :start and oi.order.createdAt < :end
@@ -104,6 +123,37 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     Long sumQuantityBetween(@Param("start") LocalDateTime start,
                             @Param("end") LocalDateTime end,
                             @Param("cancelled") OrderStatus cancelled);
+
+    @Query("""
+            select v.id as variantId,
+                   p.id as productId,
+                   p.name as productName,
+                   b.name as brand,
+                   v.sizeMl as sizeMl,
+                   v.stock as stock,
+                   coalesce(sum(oi.quantity), 0) as unitsSold
+            from ProductVariant v
+            join v.product p
+            left join p.brand b
+            left join OrderItem oi on oi.variant.id = v.id
+                and oi.order.createdAt >= :start and oi.order.createdAt < :end
+                and oi.order.status <> :cancelled
+            where v.isActive = true
+            group by v.id, p.id, p.name, b.name, v.sizeMl, v.stock
+            """)
+    List<VariantSalesStat> findVariantSales(@Param("start") LocalDateTime start,
+                                             @Param("end") LocalDateTime end,
+                                             @Param("cancelled") OrderStatus cancelled);
+
+    interface VariantSalesStat {
+        Long getVariantId();
+        Long getProductId();
+        String getProductName();
+        String getBrand();
+        Integer getSizeMl();
+        Integer getStock();
+        Long getUnitsSold();
+    }
 
     interface BestSellerProjection {
         String getProductName();
@@ -133,6 +183,12 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
     interface BrandPerformanceStat {
         String getBrandName();
+        Long getQuantitySold();
+        BigDecimal getTotalRevenue();
+    }
+
+    interface FragranceFamilyPerformanceStat {
+        String getFragranceFamily();
         Long getQuantitySold();
         BigDecimal getTotalRevenue();
     }

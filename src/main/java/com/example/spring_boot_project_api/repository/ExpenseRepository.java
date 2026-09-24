@@ -22,6 +22,21 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
             "where e.incurredAt >= :start and e.incurredAt <= :end")
     BigDecimal sumAmountBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
 
+    @Query("""
+            select e.category as category, sum(e.amount) as total
+            from Expense e
+            where e.incurredAt >= :start and e.incurredAt <= :end
+            group by e.category
+            order by sum(e.amount) desc
+            """)
+    List<ExpenseCategoryStat> sumAmountByCategoryBetween(@Param("start") LocalDate start,
+                                                         @Param("end") LocalDate end);
+
+    interface ExpenseCategoryStat {
+        String getCategory();
+        BigDecimal getTotal();
+    }
+
     @Query("select coalesce(sum(e.amount), 0) from Expense e")
     BigDecimal sumAmountAll();
 

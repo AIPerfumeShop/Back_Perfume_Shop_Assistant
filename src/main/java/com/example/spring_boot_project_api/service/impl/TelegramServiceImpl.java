@@ -159,4 +159,5 @@ public class TelegramServiceImpl implements TelegramService {
     private String nullToNa(String value) {
         return value != null && !value.isBlank() ? value : "N/A";
     }
+    
 }

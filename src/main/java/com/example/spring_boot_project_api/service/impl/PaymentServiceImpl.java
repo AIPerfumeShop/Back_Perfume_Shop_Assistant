@@ -537,14 +537,15 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException("Payment method is required");
         }
         try {
-            return PaymentMethod.valueOf(paymentMethodName.trim().toUpperCase());
+            PaymentMethod method = PaymentMethod.valueOf(paymentMethodName.trim().toUpperCase());
+            if (method != PaymentMethod.KHQR && method != PaymentMethod.CASH) {
+                throw new IllegalArgumentException("Legacy payment method");
+            }
+            return method;
         } catch (IllegalArgumentException ex) {
             throw new BadRequestException(
                     "Invalid payment method : " + paymentMethodName
-                            + ". Allowed values : " + String.join(", ",
-                            java.util.Arrays.stream(PaymentMethod.values())
-                                    .map(Enum::name)
-                                    .toList()));
+                            + ". Allowed values : KHQR, CASH");
         }
     }
 

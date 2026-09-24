@@ -1,6 +1,9 @@
 package com.example.spring_boot_project_api.service.impl;
 
 import java.time.LocalDateTime;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,14 +44,27 @@ class BakongPaymentReconciliationTest {
     private OrderService orderService;
     @Mock
     private BakongProperties bakongProperties;
+    @Mock
+    private javax.sql.DataSource dataSource;
+    @Mock
+    private Connection connection;
+    @Mock
+    private PreparedStatement statement;
+    @Mock
+    private ResultSet resultSet;
 
     private BakongPaymentReconciliation reconciliation;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         reconciliation = new BakongPaymentReconciliation(
                 paymentRepository, paymentService, orderService,
-                bakongProperties, 15L, 60_000L);
+                bakongProperties, dataSource, 15L, 60_000L);
+        lenient().when(dataSource.getConnection()).thenReturn(connection);
+        lenient().when(connection.prepareStatement(anyString())).thenReturn(statement);
+        lenient().when(statement.executeQuery()).thenReturn(resultSet);
+        lenient().when(resultSet.next()).thenReturn(true);
+        lenient().when(resultSet.getInt(1)).thenReturn(1);
     }
 
     @Test
@@ -71,11 +88,11 @@ class BakongPaymentReconciliationTest {
         when(paymentRepository.findAllByStatusAndMd5IsNotNull(
                 PaymentStatus.PENDING)).thenReturn(List.of(payment));
         when(paymentService.verifyBakongPayment(1L)).thenReturn(pending);
+        when(paymentService.expirePayment(1L)).thenReturn(true);
 
         reconciliation.reconcile();
 
-        assertEquals(PaymentStatus.FAILED, payment.getStatus());
-        verify(paymentRepository).save(payment);
+        verify(paymentService).expirePayment(1L);
         verify(orderService).cancelOrderAdmin(
                 eq(10L), anyString());
     }
