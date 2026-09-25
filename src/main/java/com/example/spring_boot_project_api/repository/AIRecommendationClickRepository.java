@@ -14,6 +14,8 @@ import com.example.spring_boot_project_api.model.AIRecommendationClick;
 @Repository
 public interface AIRecommendationClickRepository extends JpaRepository<AIRecommendationClick, Long> {
 
+    List<AIRecommendationClick> findTop25ByUserIdOrderByClickedAtDesc(Long userId);
+
     interface ProductClickStat {
         Long getProductId();
         String getProductName();

@@ -21,6 +21,7 @@ import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequ
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationClickResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.CustomerFragranceProfileResponse;
+import com.example.spring_boot_project_api.enums.OrderStatus;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
@@ -28,6 +29,7 @@ import com.example.spring_boot_project_api.model.AIConversation;
 import com.example.spring_boot_project_api.model.AIMessage;
 import com.example.spring_boot_project_api.model.AIRecommendation;
 import com.example.spring_boot_project_api.model.AIRecommendationClick;
+import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.Product;
 import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.User;
@@ -35,13 +37,17 @@ import com.example.spring_boot_project_api.repository.AIConversationRepository;
 import com.example.spring_boot_project_api.repository.AIMessageRepository;
 import com.example.spring_boot_project_api.repository.AIRecommendationClickRepository;
 import com.example.spring_boot_project_api.repository.AIRecommendationRepository;
+import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository.ProductRatingStat;
 import com.example.spring_boot_project_api.repository.UserRepository;
+import com.example.spring_boot_project_api.repository.WishlistItemRepository;
+import com.example.spring_boot_project_api.repository.WishlistRepository;
 import com.example.spring_boot_project_api.repository.specification.ProductSpecification;
 import com.example.spring_boot_project_api.service.AIRecommendationService;
 import com.example.spring_boot_project_api.service.CustomerFragranceProfileService;
 import com.example.spring_boot_project_api.service.OpenRouterService;
+import com.example.spring_boot_project_api.util.FragranceSimilarityScorer;
 
 @Service
 @Transactional
@@ -55,6 +61,10 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
     private final UserRepository userRepository;
     private final OpenRouterService openRouterService;
     private final CustomerFragranceProfileService fragranceProfileService;
+    private final FragranceSimilarityScorer similarityScorer;
+    private final OrderRepository orderRepository;
+    private final WishlistRepository wishlistRepository;
+    private final WishlistItemRepository wishlistItemRepository;
 
     public AIRecommendationServiceImpl(
             ProductRepository productRepository,
@@ -64,7 +74,11 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
             AIMessageRepository messageRepository,
             UserRepository userRepository,
             OpenRouterService openRouterService,
-            CustomerFragranceProfileService fragranceProfileService) {
+            CustomerFragranceProfileService fragranceProfileService,
+            FragranceSimilarityScorer similarityScorer,
+            OrderRepository orderRepository,
+            WishlistRepository wishlistRepository,
+            WishlistItemRepository wishlistItemRepository) {
         this.productRepository = productRepository;
         this.recommendationRepository = recommendationRepository;
         this.clickRepository = clickRepository;
@@ -73,6 +87,10 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         this.userRepository = userRepository;
         this.openRouterService = openRouterService;
         this.fragranceProfileService = fragranceProfileService;
+        this.similarityScorer = similarityScorer;
+        this.orderRepository = orderRepository;
+        this.wishlistRepository = wishlistRepository;
+        this.wishlistItemRepository = wishlistItemRepository;
     }
 
     @Override
@@ -88,7 +106,6 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         // limit + conversationId, so this is the path that makes "Recommended
         // for you" actually personal).
         AIRecommendationRequest source = req;
-        boolean personalized = false;
         if (conversation != null && !hasExplicitFilters(req)) {
             List<AIMessage> history = messageRepository
                     .findByConversationIdOrderByCreatedAtAsc(conversation.getId());
@@ -97,47 +114,57 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
             AIRecommendationRequest merged = mergePreferences(req, preferences);
             if (hasAnyPreference(preferences)) {
                 source = merged;
-                personalized = true;
             }
         }
 
         AIRecommendationRequest criteria = mergeSavedPreferences(source, req.getPreferences());
         int candidateLimit = Math.max(60, Math.min(100, limit * 20));
         List<Product> candidates = queryProducts(criteria, candidateLimit);
-        if (candidates.isEmpty() && !sameFilters(criteria, source)) {
-            candidates = queryProducts(source, candidateLimit);
-        }
-        if (candidates.isEmpty() && (personalized || req.getPreferences() != null)) {
-            AIRecommendationRequest broadRequest = new AIRecommendationRequest();
-            broadRequest.setConversationId(req.getConversationId());
-            broadRequest.setLimit(req.getLimit());
-            candidates = queryProducts(broadRequest, candidateLimit);
-        }
+        // Keep explicit and saved budget limits as hard constraints. If nothing
+        // matches, return no results instead of silently recommending outside budget.
         Set<Long> previouslyRecommended = conversation == null
                 ? Set.of()
                 : recommendationRepository.findByConversationId(conversation.getId()).stream()
                         .map(recommendation -> recommendation.getProduct().getId())
                         .collect(Collectors.toSet());
+        if (!previouslyRecommended.isEmpty()) {
+            candidates = candidates.stream()
+                    .filter(product -> !previouslyRecommended.contains(product.getId()))
+                    .toList();
+        }
         AIRecommendationRequest rankingCriteria = source;
+        Map<Long, Product> behaviorProductsById = new java.util.LinkedHashMap<>();
+        clickRepository.findTop25ByUserIdOrderByClickedAtDesc(userId).stream()
+                .map(click -> click.getRecommendation().getProduct())
+                .forEach(product -> behaviorProductsById.putIfAbsent(product.getId(), product));
+        wishlistRepository.findByUserId(userId).ifPresent(wishlist ->
+                wishlistItemRepository.findAllByWishlistId(wishlist.getId()).stream()
+                        .map(item -> item.getProduct())
+                        .forEach(product -> behaviorProductsById.putIfAbsent(product.getId(), product)));
+        orderRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId).stream()
+                .filter(order -> order.getStatus() != OrderStatus.CANCELLED)
+                .map(Order::getItems)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .map(item -> item.getVariant() == null ? null : item.getVariant().getProduct())
+                .filter(Objects::nonNull)
+                .forEach(product -> behaviorProductsById.putIfAbsent(product.getId(), product));
+        List<Product> behaviorProducts = List.copyOf(behaviorProductsById.values());
+        List<Long> candidateIds = candidates.stream().map(Product::getId).toList();
+        Map<Long, Double> avgRateById = candidateIds.isEmpty()
+                ? Map.of()
+                : productRepository.findRatingStats(candidateIds).stream()
+                        .collect(Collectors.toMap(ProductRatingStat::getProductId,
+                                ProductRatingStat::getAvgRate));
         final List<Product> finalProducts = candidates.stream()
-                .sorted(Comparator
-                        .comparing((Product product) -> previouslyRecommended.contains(product.getId()))
-                        .thenComparing(Comparator.comparingInt((Product product) ->
-                                preferenceScore(product, req.getPreferences(), rankingCriteria, customerProfile)).reversed())
+                .sorted(Comparator.comparingInt((Product product) ->
+                                recommendationScore(product, req.getPreferences(), rankingCriteria,
+                                        customerProfile, behaviorProducts,
+                                        avgRateById.get(product.getId())))
+                        .reversed()
                         .thenComparing(Product::getId))
                 .limit(limit)
                 .toList();
-        final String displayedReason = buildReason(criteria);
-
-        List<Long> ids = finalProducts.stream()
-                .map(Product::getId)
-                .toList();
-        Map<Long, Double> avgRateById = ids.isEmpty()
-                ? Map.of()
-                : productRepository.findRatingStats(ids).stream()
-                        .collect(Collectors.toMap(
-                                ProductRatingStat::getProductId,
-                                ProductRatingStat::getAvgRate));
 
         List<AIRecommendationResponse> responses = finalProducts.stream()
                 .map(product -> toResponse(product, avgRateById.get(product.getId()), null, 0))
@@ -146,7 +173,8 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         int position = 0;
         for (Product product : finalProducts) {
             responses.get(position).setPosition(position + 1);
-            responses.get(position).setReason(displayedReason);
+            responses.get(position).setReason(buildReason(product, criteria, req.getPreferences(),
+                    customerProfile, behaviorProducts, avgRateById.get(product.getId())));
             position++;
         }
 
@@ -157,7 +185,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
                                 AIRecommendation entity = new AIRecommendation();
                                 entity.setConversation(conversation);
                                 entity.setProduct(product);
-                                entity.setReason(displayedReason);
+                                entity.setReason(responses.get(finalProducts.indexOf(product)).getReason());
                                 entity.setPosition(finalProducts.indexOf(product) + 1);
                                 return entity;
                             })
@@ -201,18 +229,9 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         return merged;
     }
 
-    private boolean sameFilters(AIRecommendationRequest first, AIRecommendationRequest second) {
-        return Objects.equals(first.getSearch(), second.getSearch())
-                && Objects.equals(first.getCategoryId(), second.getCategoryId())
-                && Objects.equals(first.getBrand(), second.getBrand())
-                && Objects.equals(first.getGender(), second.getGender())
-                && Objects.equals(first.getFragranceFamily(), second.getFragranceFamily())
-                && Objects.equals(first.getMinPrice(), second.getMinPrice())
-                && Objects.equals(first.getMaxPrice(), second.getMaxPrice());
-    }
-
-    private int preferenceScore(Product product, AIChatPreferences preferences,
-            AIRecommendationRequest chatCriteria, CustomerFragranceProfileResponse customerProfile) {
+    private int recommendationScore(Product product, AIChatPreferences preferences,
+            AIRecommendationRequest chatCriteria, CustomerFragranceProfileResponse customerProfile,
+            List<Product> clickedProducts, Double averageRating) {
         int score = 0;
         var fragrance = product.getFragranceProfile();
         String family = fragrance == null || fragrance.getFragranceFamily() == null
@@ -246,7 +265,62 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         score += scentProfileScore(family, notes, "fresh", customerProfile.getFresh());
         score += scentProfileScore(family, notes, "woody", customerProfile.getWoody());
         score += scentProfileScore(family, notes, "sweet", customerProfile.getSweetness());
+
+        // Reward affinity with products the customer chose to open from prior
+        // recommendation lists; purchase-derived fragrance profile remains the
+        // longer term preference signal.
+        score += behaviorScore(product, clickedProducts);
+        if (averageRating != null) score += (int) Math.round(averageRating * 2.0);
+        if (chatCriteria.getSearch() != null) {
+            String search = chatCriteria.getSearch().toLowerCase(Locale.ROOT);
+            String searchable = (product.getName() + " " + brand + " " + family + " " + notes)
+                    .toLowerCase(Locale.ROOT);
+            if (searchable.contains(search)) score += 12;
+        }
         return score;
+    }
+
+    private int behaviorScore(Product candidate, List<Product> clickedProducts) {
+        return clickedProducts.stream()
+                .filter(clicked -> !Objects.equals(clicked.getId(), candidate.getId()))
+                .mapToInt(clicked -> similarityScorer.score(candidate, clicked) / 10)
+                .max()
+                .orElse(0);
+    }
+
+    private String buildReason(Product product, AIRecommendationRequest request,
+            AIChatPreferences preferences, CustomerFragranceProfileResponse profile,
+            List<Product> clickedProducts, Double averageRating) {
+        List<String> reasons = new java.util.ArrayList<>();
+        var fragrance = product.getFragranceProfile();
+        String family = fragrance == null ? null : fragrance.getFragranceFamily();
+        if (family != null && preferences != null && preferences.getFamilies() != null
+                && preferences.getFamilies().stream().filter(Objects::nonNull)
+                        .anyMatch(value -> family.toLowerCase(Locale.ROOT).contains(value.toLowerCase(Locale.ROOT)))) {
+            reasons.add("matches your " + family.toLowerCase(Locale.ROOT) + " preference");
+        }
+        if (fragrance != null && family != null) {
+            String normalizedFamily = family.toLowerCase(Locale.ROOT);
+            if (normalizedFamily.contains("floral") && profile.getFloral() != null && profile.getFloral() >= 55)
+                reasons.add("fits your floral scent profile");
+            else if (normalizedFamily.contains("fresh") && profile.getFresh() != null && profile.getFresh() >= 55)
+                reasons.add("fits your fresh scent profile");
+            else if (normalizedFamily.contains("woody") && profile.getWoody() != null && profile.getWoody() >= 55)
+                reasons.add("fits your woody scent profile");
+            else if (normalizedFamily.contains("sweet") && profile.getSweetness() != null && profile.getSweetness() >= 55)
+                reasons.add("fits your sweet scent profile");
+        }
+        if (request.getBrand() != null && product.getBrand() != null
+                && product.getBrand().getName().equalsIgnoreCase(request.getBrand()))
+            reasons.add("matches the brand you requested");
+        if (request.getMinPrice() != null || request.getMaxPrice() != null)
+            reasons.add("is within your requested budget");
+        if (behaviorScore(product, clickedProducts) > 0)
+            reasons.add("is similar to products you explored");
+        if (averageRating != null && averageRating >= 4.0)
+            reasons.add("is highly rated by customers");
+        return reasons.isEmpty() ? "Selected from in-stock products that best match your preferences."
+                : "Recommended because it " + String.join(" and ", reasons) + ".";
     }
 
     private int scentProfileScore(String family, String notes, String scent, Integer preference) {
@@ -380,35 +454,12 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
             return BigDecimal.ZERO;
         }
         return product.getVariants().stream()
+                .filter(variant -> Boolean.TRUE.equals(variant.getIsActive()))
+                .filter(variant -> variant.getStock() != null && variant.getStock() > 0)
                 .map(ProductVariant::getPrice)
                 .filter(Objects::nonNull)
                 .min(Comparator.naturalOrder())
                 .orElse(BigDecimal.ZERO);
     }
 
-    private String buildReason(AIRecommendationRequest request) {
-        StringBuilder reason = new StringBuilder("Recommended for you");
-        if (request.getBrand() != null && !request.getBrand().isBlank()) {
-            reason.append(" from ").append(request.getBrand());
-        }
-        if (request.getGender() != null) {
-            reason.append(", ").append(request.getGender().name().toLowerCase()).append(" scent");
-        }
-        if (request.getFragranceFamily() != null && !request.getFragranceFamily().isBlank()) {
-            reason.append(", ").append(request.getFragranceFamily()).append(" family");
-        }
-        if (request.getMinPrice() != null || request.getMaxPrice() != null) {
-            StringBuilder range = new StringBuilder();
-            if (request.getMinPrice() != null) {
-                range.append("$").append(request.getMinPrice());
-            }
-            range.append("-");
-            if (request.getMaxPrice() != null) {
-                range.append("$").append(request.getMaxPrice());
-            }
-            reason.append(", within ").append(range);
-        }
-        reason.append(", highly rated");
-        return reason.toString();
-    }
 }

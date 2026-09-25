@@ -12,10 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
 import com.example.spring_boot_project_api.dto.request.ai.AIChatPreferences;
+import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
+import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationResponse;
 import com.example.spring_boot_project_api.enums.MessageSender;
 import com.example.spring_boot_project_api.exception.AIServiceException;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
@@ -30,6 +32,7 @@ import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.AIService;
 import com.example.spring_boot_project_api.service.CustomerFragranceProfileService;
 import com.example.spring_boot_project_api.service.OpenRouterService;
+import com.example.spring_boot_project_api.service.AIRecommendationService;
 import com.example.spring_boot_project_api.util.ProductCatalogBuilder;
 
 @Service
@@ -42,6 +45,7 @@ public class AIServiceImpl implements AIService {
     private final AIMapper aiMapper;
     private final OpenRouterService openRouterService;
     private final CustomerFragranceProfileService fragranceProfileService;
+    private final AIRecommendationService recommendationService;
     private static final int MAX_HISTORY_SIZE = 30;
 
     public AIServiceImpl(
@@ -51,7 +55,8 @@ public class AIServiceImpl implements AIService {
             ProductCatalogBuilder productCatalogBuilder,
             AIMapper aiMapper,
             OpenRouterService openRouterService,
-            CustomerFragranceProfileService fragranceProfileService) {
+            CustomerFragranceProfileService fragranceProfileService,
+            AIRecommendationService recommendationService) {
 
         this.aiConversationRepository = aiConversationRepository;
         this.aiMessageRepository = aiMessageRepository;
@@ -60,6 +65,7 @@ public class AIServiceImpl implements AIService {
         this.aiMapper = aiMapper;
         this.openRouterService = openRouterService;
         this.fragranceProfileService = fragranceProfileService;
+        this.recommendationService = recommendationService;
     }
 
     // =========================================================
@@ -74,9 +80,12 @@ public class AIServiceImpl implements AIService {
         saveUserMessage(request, conversation);
         List<AIMessage> history = loadHistory(conversation.getId());
 
+        String catalog = productCatalogBuilder.build()
+                + buildPersonalizationContext(userId, request.getPreferences())
+                + buildRankedRecommendationContext(userId, conversation, request.getMessage(), request.getPreferences());
         String aiText = openRouterService.generateResponse(
                 history,
-                productCatalogBuilder.build() + buildPersonalizationContext(userId, request.getPreferences()));
+                catalog);
         AIMessage aiMessage = saveAssistantMessage(aiText, conversation);
 
         return buildChatResponse(conversation.getId(), aiMessage);
@@ -91,8 +100,11 @@ public class AIServiceImpl implements AIService {
         List<AIMessage> history = loadHistory(conversation.getId());
 
         StringBuilder collected = new StringBuilder();
+        String catalog = productCatalogBuilder.build()
+                + buildPersonalizationContext(userId, request.getPreferences())
+                + buildRankedRecommendationContext(userId, conversation, request.getMessage(), request.getPreferences());
         openRouterService.streamGenerateResponse(history,
-                productCatalogBuilder.build() + buildPersonalizationContext(userId, request.getPreferences()), token -> {
+                catalog, token -> {
             collected.append(token);
             onToken.accept(token);
         });
@@ -124,8 +136,60 @@ public class AIServiceImpl implements AIService {
             appendValue(context, "Minimum price", preferences.getPriceMin());
             appendValue(context, "Maximum price", preferences.getPriceMax());
         }
-        context.append("\nFollow these saved tastes when recommending perfumes, while prioritizing the customer's current message if it conflicts.");
+        context.append("\nFollow these saved tastes when recommending perfumes, while prioritizing the customer's current message if it conflicts.")
+                .append("\nBefore suggesting products, review the conversation history. Avoid recommending products already suggested in this conversation unless the customer asks about that specific product or asks to see it again.")
+                .append("\nWhen asked for another recommendation, choose different in-stock products from the catalog that best match the customer's current request and saved tastes. If no suitable new option exists, say so honestly and ask whether they want to broaden their preferences; do not repeat an old recommendation just to fill the answer.")
+                .append("\nDo not turn unrelated messages or emotional disclosures into a sales pitch. If the customer declines recommendations or says they do not want to shop, acknowledge that and do not suggest products unless they later ask.")
+                .append("\nIf the customer asks why you recommended a product, explain that product only; do not add alternative products unless requested.");
         return context.toString();
+    }
+
+    private String buildRankedRecommendationContext(Long userId, AIConversation conversation,
+            String message, AIChatPreferences preferences) {
+        if (!isRecommendationRequest(message)) return "";
+
+        AIRecommendationRequest request = new AIRecommendationRequest();
+        request.setConversationId(conversation.getId());
+        request.setLimit(3);
+        request.setPreferences(preferences);
+        List<AIRecommendationResponse> ranked = recommendationService.recommend(userId, request);
+
+        StringBuilder context = new StringBuilder("\n\nSYSTEM-GENERATED RANKED RECOMMENDATIONS FOR THIS REQUEST:")
+                .append("\nThe backend selected these in-stock products using catalog filters, the current request, the customer's fragrance profile, and prior behavior.")
+                .append("\nOnly recommend products from this ranked list for this request. Do not invent or substitute catalog items.")
+                .append("\nUse each item's supplied reason to explain the match.");
+        if (ranked.isEmpty()) {
+            return context.append("\nNo new matching products are available. Explain that clearly and ask which constraint the customer would like to change; never repeat previously recommended products.")
+                    .toString();
+        }
+        for (AIRecommendationResponse item : ranked) {
+            context.append("\n- ").append(item.getProductName())
+                    .append(" (brand: ").append(item.getBrand())
+                    .append(", from $").append(item.getPrice())
+                    .append(", rating: ").append(item.getAverageRate() != null ? item.getAverageRate() : "not rated")
+                    .append("): ").append(item.getReason());
+        }
+        return context.toString();
+    }
+
+    private boolean isRecommendationRequest(String message) {
+        if (message == null || message.isBlank()) return false;
+        String text = message.toLowerCase(java.util.Locale.ROOT);
+        if (containsAny(text, "don't recommend", "do not recommend", "no recommendations",
+                "don't want to shop", "do not want to shop", "not shopping",
+                "don't want a recommendation", "do not want a recommendation", "not looking for a perfume",
+                "why did you recommend", "why recommend", "why this perfume")) return false;
+        return containsAny(text, "recommend", "recommendation", "suggest a perfume", "suggest me",
+                "find my perfume", "find me a perfume", "perfume for", "fragrance for",
+                "what perfume", "which perfume", "help me choose a perfume", "what should i buy",
+                "what would you recommend", "what do you recommend", "what suits me", "another perfume");
+    }
+
+    private boolean containsAny(String text, String... phrases) {
+        for (String phrase : phrases) {
+            if (text.contains(phrase)) return true;
+        }
+        return false;
     }
 
     private void appendList(StringBuilder context, String label, List<String> values) {

@@ -644,6 +644,11 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Admin updated payment {} status: {} -> {} (reason: {})",
                 paymentId, oldStatus, newStatus, reason);
 
-        return paymentMapper.toResponse(findPayment(paymentId));
+        PaymentResponse updatedPayment = paymentMapper.toResponse(findPayment(paymentId));
+        if (oldStatus == PaymentStatus.PENDING
+                && newStatus == PaymentStatus.SUCCESSFUL) {
+            sendPaymentNotificationAfterCommit(updatedPayment);
+        }
+        return updatedPayment;
     }
 }

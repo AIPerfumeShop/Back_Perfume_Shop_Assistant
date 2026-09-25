@@ -96,6 +96,13 @@ public class TelegramServiceImpl implements TelegramService {
         sendMessage(buildPaymentNotification(payment));
     }
 
+    @Override
+    public void sendCodOrderReceivedNotification(PaymentResponse payment) {
+        sendMessage(buildPaymentNotification(payment)
+                .replace("💰 Payment Received!",
+                        "🛍️ COD Order Received!\n\nPayment will be collected on delivery."));
+    }
+
     private String buildPaymentNotification(PaymentResponse payment) {
         StringBuilder text = new StringBuilder("💰 Payment Received!")
                 .append("\n\nPayment ID: PAY-").append(payment.getId())

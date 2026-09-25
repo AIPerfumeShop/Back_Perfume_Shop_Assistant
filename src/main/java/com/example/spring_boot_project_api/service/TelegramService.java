@@ -9,4 +9,6 @@ public interface TelegramService {
     void sendMessage(String text);
 
     void sendPaymentNotification(PaymentResponse payment);
+
+    void sendCodOrderReceivedNotification(PaymentResponse payment);
 }

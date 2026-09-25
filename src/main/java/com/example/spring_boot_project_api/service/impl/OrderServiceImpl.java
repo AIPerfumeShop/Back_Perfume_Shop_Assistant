@@ -8,6 +8,7 @@ import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderStatusHistoryResponse;
 import com.example.spring_boot_project_api.service.NotificationService;
 import com.example.spring_boot_project_api.service.PaymentService;
+import com.example.spring_boot_project_api.service.TelegramService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -19,6 +20,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.example.spring_boot_project_api.dto.request.order.CreateOrderRequest;
 import com.example.spring_boot_project_api.dto.request.order.OrderItemRequest;
@@ -73,6 +76,7 @@ public class OrderServiceImpl implements OrderService {
     private final PaymentService paymentService;
     private final NotificationService notificationService;
     private final SettingsRepository settingsRepository;
+    private final TelegramService telegramService;
     private static final String KHQR_ENABLED_SETTING = "payment_khqr";
 
     public OrderServiceImpl(
@@ -84,7 +88,8 @@ public class OrderServiceImpl implements OrderService {
             OrderMapper orderMapper,
             PaymentService paymentService,
             NotificationService notificationService,
-            SettingsRepository settingsRepository) {
+            SettingsRepository settingsRepository,
+            TelegramService telegramService) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.productVariantRepository = productVariantRepository;
@@ -94,6 +99,7 @@ public class OrderServiceImpl implements OrderService {
         this.paymentService = paymentService;
         this.notificationService = notificationService;
         this.settingsRepository = settingsRepository;
+        this.telegramService = telegramService;
     }
 
     //Create order
@@ -379,6 +385,7 @@ public class OrderServiceImpl implements OrderService {
         //Cash on delivery is collected at delivery, so both the order and the
         //payment stay PENDING until the order is marked DELIVERED.
         if ("CASH".equalsIgnoreCase(request.getPaymentMethod())) {
+            sendCodOrderNotificationAfterCommit(payment);
             return toCheckoutResponse(payment, savedOrder);
         }
 
@@ -396,6 +403,22 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return toCheckoutResponse(payment, savedOrder);
+    }
+
+    private void sendCodOrderNotificationAfterCommit(Payment payment) {
+        var response = paymentService.getPayment(payment.getId());
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status == STATUS_COMMITTED) {
+                        telegramService.sendCodOrderReceivedNotification(response);
+                    }
+                }
+            });
+        } else {
+            telegramService.sendCodOrderReceivedNotification(response);
+        }
     }
 
     private CheckoutResponse toCheckoutResponse(Payment payment, Order order) {

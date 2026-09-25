@@ -309,7 +309,12 @@ public class CustomerCareServiceImpl implements CustomerCareService {
                     .filter(value -> value != null && !value.isBlank())
                     .collect(java.util.stream.Collectors.joining(" — "));
         }
-        String combined = (reason == null ? "" : reason) + " " + summary;
+        String combined = String.join(" ",
+                nullToEmpty(request.getCategory()),
+                nullToEmpty(request.getSubject()),
+                nullToEmpty(request.getReason()),
+                nullToEmpty(request.getMessage()),
+                nullToEmpty(summary));
 
         SupportTicket ticket = new SupportTicket();
         ticket.setUser(user);
@@ -794,12 +799,21 @@ public class CustomerCareServiceImpl implements CustomerCareService {
     }
 
     private TicketPriority detectPriority(String combined) {
-        if (combined != null && containsAny(combined.toLowerCase(),
-                "urgent", "asap", "emergency", "complaint", "scam", "terrible",
-                "broken", "damaged", "refund", "not received")) {
+        String text = combined == null ? "" : combined.toLowerCase(java.util.Locale.ROOT);
+        if (containsAny(text,
+                "urgent", "asap", "emergency", "immediately", "critical",
+                "scam", "fraud", "charged twice", "unauthorized charge",
+                "broken", "damaged", "defective", "wrong item", "leaking",
+                "not received", "never arrived", "missing package", "lost package",
+                "allergic reaction", "skin reaction", "refund", "complaint",
+                "unsafe", "dangerous")) {
             return TicketPriority.URGENT;
         }
         return TicketPriority.NORMAL;
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     // =========================================================
