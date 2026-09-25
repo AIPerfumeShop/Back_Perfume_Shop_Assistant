@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationClickRequest;
 import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationRequest;
+import com.example.spring_boot_project_api.dto.request.ai.AISearchPreferences;
 import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequest;
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationClickResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationResponse;
@@ -20,12 +21,14 @@ import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.model.AIConversation;
+import com.example.spring_boot_project_api.model.AIMessage;
 import com.example.spring_boot_project_api.model.AIRecommendation;
 import com.example.spring_boot_project_api.model.AIRecommendationClick;
 import com.example.spring_boot_project_api.model.Product;
 import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.User;
 import com.example.spring_boot_project_api.repository.AIConversationRepository;
+import com.example.spring_boot_project_api.repository.AIMessageRepository;
 import com.example.spring_boot_project_api.repository.AIRecommendationClickRepository;
 import com.example.spring_boot_project_api.repository.AIRecommendationRepository;
 import com.example.spring_boot_project_api.repository.ProductRepository;
@@ -33,6 +36,7 @@ import com.example.spring_boot_project_api.repository.ProductRepository.ProductR
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.repository.specification.ProductSpecification;
 import com.example.spring_boot_project_api.service.AIRecommendationService;
+import com.example.spring_boot_project_api.service.OpenRouterService;
 
 @Service
 @Transactional
@@ -42,19 +46,25 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
     private final AIRecommendationRepository recommendationRepository;
     private final AIRecommendationClickRepository clickRepository;
     private final AIConversationRepository conversationRepository;
+    private final AIMessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final OpenRouterService openRouterService;
 
     public AIRecommendationServiceImpl(
             ProductRepository productRepository,
             AIRecommendationRepository recommendationRepository,
             AIRecommendationClickRepository clickRepository,
             AIConversationRepository conversationRepository,
-            UserRepository userRepository) {
+            AIMessageRepository messageRepository,
+            UserRepository userRepository,
+            OpenRouterService openRouterService) {
         this.productRepository = productRepository;
         this.recommendationRepository = recommendationRepository;
         this.clickRepository = clickRepository;
         this.conversationRepository = conversationRepository;
+        this.messageRepository = messageRepository;
         this.userRepository = userRepository;
+        this.openRouterService = openRouterService;
     }
 
     @Override
@@ -64,12 +74,35 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         int limit = req.getLimit() == null ? 5 : req.getLimit();
         AIConversation conversation = resolveConversation(userId, req.getConversationId());
 
-        ProductFilterRequest filter = toProductFilter(req, limit);
-        Page<Product> products = productRepository.findAll(
-                ProductSpecification.fromFilter(filter),
-                filter.toPageRequest());
+        // Personalize from the chat history when the caller did not supply
+        // explicit filters of its own (the frontend widget only sends a
+        // limit + conversationId, so this is the path that makes "Recommended
+        // for you" actually personal).
+        AIRecommendationRequest source = req;
+        boolean personalized = false;
+        if (conversation != null && !hasExplicitFilters(req)) {
+            List<AIMessage> history = messageRepository
+                    .findByConversationIdOrderByCreatedAtAsc(conversation.getId());
+            AISearchPreferences preferences =
+                    openRouterService.extractSearchPreferences(history);
+            AIRecommendationRequest merged = mergePreferences(req, preferences);
+            if (hasAnyPreference(preferences)) {
+                source = merged;
+                personalized = true;
+            }
+        }
 
-        List<Long> ids = products.getContent().stream()
+        List<Product> products = queryProducts(source, limit);
+        if (products.isEmpty() && personalized) {
+            // The chat's preferences matched nothing — fall back to the
+            // generic top-rated, in-stock query instead of an empty panel.
+            source = req;
+            products = queryProducts(req, limit);
+        }
+        final String displayedReason = buildReason(source);
+        final List<Product> finalProducts = products;
+
+        List<Long> ids = finalProducts.stream()
                 .map(Product::getId)
                 .toList();
         Map<Long, Double> avgRateById = ids.isEmpty()
@@ -79,26 +112,26 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
                                 ProductRatingStat::getProductId,
                                 ProductRatingStat::getAvgRate));
 
-        List<AIRecommendationResponse> responses = products.getContent().stream()
+        List<AIRecommendationResponse> responses = finalProducts.stream()
                 .map(product -> toResponse(product, avgRateById.get(product.getId()), null, 0))
                 .toList();
 
         int position = 0;
-        for (Product product : products.getContent()) {
+        for (Product product : finalProducts) {
             responses.get(position).setPosition(position + 1);
-            responses.get(position).setReason(buildReason(req));
+            responses.get(position).setReason(displayedReason);
             position++;
         }
 
         if (conversation != null) {
             List<AIRecommendation> saved = recommendationRepository.saveAll(
-                    products.getContent().stream()
+                    finalProducts.stream()
                             .map(product -> {
                                 AIRecommendation entity = new AIRecommendation();
                                 entity.setConversation(conversation);
                                 entity.setProduct(product);
-                                entity.setReason(buildReason(req));
-                                entity.setPosition(products.getContent().indexOf(product) + 1);
+                                entity.setReason(displayedReason);
+                                entity.setPosition(finalProducts.indexOf(product) + 1);
                                 return entity;
                             })
                             .toList());
@@ -148,6 +181,51 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
             throw new ForbiddenException("Conversation does not belong to this user");
         }
         return conversation;
+    }
+
+    private List<Product> queryProducts(AIRecommendationRequest req, int limit) {
+        ProductFilterRequest filter = toProductFilter(req, limit);
+        Page<Product> products = productRepository.findAll(
+                ProductSpecification.fromFilter(filter),
+                filter.toPageRequest());
+        return products.getContent();
+    }
+
+    private boolean hasExplicitFilters(AIRecommendationRequest req) {
+        return (req.getSearch() != null && !req.getSearch().isBlank())
+                || req.getCategoryId() != null
+                || (req.getBrand() != null && !req.getBrand().isBlank())
+                || req.getGender() != null
+                || (req.getFragranceFamily() != null
+                        && !req.getFragranceFamily().isBlank())
+                || req.getMinPrice() != null
+                || req.getMaxPrice() != null;
+    }
+
+    private boolean hasAnyPreference(AISearchPreferences preferences) {
+        return preferences.search() != null
+                || preferences.brand() != null
+                || preferences.gender() != null
+                || preferences.fragranceFamily() != null
+                || preferences.minPrice() != null
+                || preferences.maxPrice() != null;
+    }
+
+    private AIRecommendationRequest mergePreferences(
+            AIRecommendationRequest req, AISearchPreferences preferences) {
+        AIRecommendationRequest merged = new AIRecommendationRequest();
+        merged.setConversationId(req.getConversationId());
+        merged.setLimit(req.getLimit());
+        merged.setSearch(req.getSearch() != null ? req.getSearch() : preferences.search());
+        merged.setCategoryId(req.getCategoryId());
+        merged.setBrand(req.getBrand() != null ? req.getBrand() : preferences.brand());
+        merged.setGender(req.getGender() != null ? req.getGender() : preferences.gender());
+        merged.setFragranceFamily(req.getFragranceFamily() != null
+                ? req.getFragranceFamily() : preferences.fragranceFamily());
+        merged.setMinPrice(req.getMinPrice() != null ? req.getMinPrice() : preferences.minPrice());
+        merged.setMaxPrice(req.getMaxPrice() != null ? req.getMaxPrice() : preferences.maxPrice());
+        merged.setMinRate(req.getMinRate());
+        return merged;
     }
 
     private ProductFilterRequest toProductFilter(AIRecommendationRequest request, int limit) {

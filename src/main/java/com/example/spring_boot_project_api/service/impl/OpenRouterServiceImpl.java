@@ -18,10 +18,13 @@ import com.example.spring_boot_project_api.dto.external.openrouter.OpenRouterMes
 import com.example.spring_boot_project_api.dto.external.openrouter.OpenRouterRequest;
 import com.example.spring_boot_project_api.dto.external.openrouter.OpenRouterResponse;
 import com.example.spring_boot_project_api.dto.external.openrouter.OpenRouterStreamChunk;
+import com.example.spring_boot_project_api.dto.request.ai.AISearchPreferences;
+import com.example.spring_boot_project_api.enums.Gender;
 import com.example.spring_boot_project_api.enums.MessageSender;
 import com.example.spring_boot_project_api.exception.AIServiceException;
 import com.example.spring_boot_project_api.model.AIMessage;
 import com.example.spring_boot_project_api.service.OpenRouterService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
@@ -192,5 +195,113 @@ public class OpenRouterServiceImpl implements OpenRouterService {
             log.error("OpenRouter stream call failed", ex);
             throw new AIServiceException("Failed to stream response from OpenRouter", ex);
         }
+    }
+
+    @Override
+    public AISearchPreferences extractSearchPreferences(List<AIMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return AISearchPreferences.empty();
+        }
+
+        String extractionPrompt = """
+                You extract perfume shopping preferences from a customer chat for a
+                perfume shop. The chat is a list of messages prefixed U: (customer)
+                and A: (assistant). Return ONLY a single JSON object and nothing else,
+                no markdown fences. Use exactly these optional keys:
+                "search" (a short free-text keyword), "brand", "gender" (one of
+                MEN, WOMEN, UNISEX), "fragranceFamily", "minPrice" (number),
+                "maxPrice" (number). Omit any key you cannot confidently infer.
+                If no preference can be inferred at all, return {"search":null}.
+                """;
+
+        try {
+            List<OpenRouterMessage> openRouterMessages = messages.stream()
+                    .map(message -> {
+                        String role = message.getSender() == MessageSender.USER
+                                ? "user"
+                                : "assistant";
+                        String prefix = message.getSender() == MessageSender.USER
+                                ? "U: "
+                                : "A: ";
+                        return new OpenRouterMessage(role, prefix + message.getMessage());
+                    })
+                    .toList();
+
+            List<OpenRouterMessage> payload = new ArrayList<>(openRouterMessages.size() + 1);
+            payload.add(new OpenRouterMessage("system", extractionPrompt));
+            payload.addAll(openRouterMessages);
+
+            OpenRouterRequest request = new OpenRouterRequest(model, payload);
+
+            OpenRouterResponse response = restClient.post()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .body(request)
+                    .retrieve()
+                    .body(OpenRouterResponse.class);
+
+            if (response == null
+                    || response.getChoices() == null
+                    || response.getChoices().isEmpty()
+                    || response.getChoices().get(0).getMessage() == null
+                    || response.getChoices().get(0).getMessage().getContent() == null) {
+                return AISearchPreferences.empty();
+            }
+
+            return parseSearchPreferences(response.getChoices().get(0).getMessage().getContent());
+        } catch (Exception ex) {
+            log.warn("Failed to extract AI search preferences", ex);
+            return AISearchPreferences.empty();
+        }
+    }
+
+    private AISearchPreferences parseSearchPreferences(String rawJson) {
+        try {
+            String json = rawJson.trim();
+            int start = json.indexOf('{');
+            int end = json.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return AISearchPreferences.empty();
+            }
+            json = json.substring(start, end + 1);
+            JsonNode node = objectMapper.readTree(json);
+
+            Gender gender = null;
+            JsonNode genderNode = node.get("gender");
+            if (genderNode != null && genderNode.isTextual()) {
+                for (Gender candidate : Gender.values()) {
+                    if (candidate.name().equalsIgnoreCase(genderNode.asText().trim())) {
+                        gender = candidate;
+                        break;
+                    }
+                }
+            }
+
+            return new AISearchPreferences(
+                    textOrNull(node.get("search")),
+                    textOrNull(node.get("brand")),
+                    gender,
+                    textOrNull(node.get("fragranceFamily")),
+                    numberOrNull(node.get("minPrice")),
+                    numberOrNull(node.get("maxPrice")));
+        } catch (Exception ex) {
+            log.warn("Failed to parse AI search preferences JSON: {}", rawJson);
+            return AISearchPreferences.empty();
+        }
+    }
+
+    private static String textOrNull(JsonNode node) {
+        if (node == null || !node.isValueNode()) {
+            return null;
+        }
+        String value = node.asText(null);
+        return (value == null || value.isBlank()) ? null : value.trim();
+    }
+
+    private static java.math.BigDecimal numberOrNull(JsonNode node) {
+        if (node == null || !node.isNumber()) {
+            return null;
+        }
+        return node.decimalValue();
     }
 }
