@@ -2,6 +2,7 @@ package com.example.spring_boot_project_api.dto.request.ai;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -12,4 +13,7 @@ public class AIChatRequest {
     @Size(max = 2000, message = "Message must be under 2000 characters")
     private String message;
     private Long conversationId;
+
+    @Valid
+    private AIChatPreferences preferences;
 }

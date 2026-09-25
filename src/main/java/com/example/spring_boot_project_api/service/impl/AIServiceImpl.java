@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
+import com.example.spring_boot_project_api.dto.request.ai.AIChatPreferences;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
@@ -27,6 +28,7 @@ import com.example.spring_boot_project_api.repository.AIConversationRepository;
 import com.example.spring_boot_project_api.repository.AIMessageRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.AIService;
+import com.example.spring_boot_project_api.service.CustomerFragranceProfileService;
 import com.example.spring_boot_project_api.service.OpenRouterService;
 import com.example.spring_boot_project_api.util.ProductCatalogBuilder;
 
@@ -39,6 +41,7 @@ public class AIServiceImpl implements AIService {
     private final ProductCatalogBuilder productCatalogBuilder;
     private final AIMapper aiMapper;
     private final OpenRouterService openRouterService;
+    private final CustomerFragranceProfileService fragranceProfileService;
     private static final int MAX_HISTORY_SIZE = 30;
 
     public AIServiceImpl(
@@ -47,7 +50,8 @@ public class AIServiceImpl implements AIService {
             UserRepository userRepository,
             ProductCatalogBuilder productCatalogBuilder,
             AIMapper aiMapper,
-            OpenRouterService openRouterService) {
+            OpenRouterService openRouterService,
+            CustomerFragranceProfileService fragranceProfileService) {
 
         this.aiConversationRepository = aiConversationRepository;
         this.aiMessageRepository = aiMessageRepository;
@@ -55,6 +59,7 @@ public class AIServiceImpl implements AIService {
         this.productCatalogBuilder = productCatalogBuilder;
         this.aiMapper = aiMapper;
         this.openRouterService = openRouterService;
+        this.fragranceProfileService = fragranceProfileService;
     }
 
     // =========================================================
@@ -69,7 +74,9 @@ public class AIServiceImpl implements AIService {
         saveUserMessage(request, conversation);
         List<AIMessage> history = loadHistory(conversation.getId());
 
-        String aiText = openRouterService.generateResponse(history, productCatalogBuilder.build());
+        String aiText = openRouterService.generateResponse(
+                history,
+                productCatalogBuilder.build() + buildPersonalizationContext(userId, request.getPreferences()));
         AIMessage aiMessage = saveAssistantMessage(aiText, conversation);
 
         return buildChatResponse(conversation.getId(), aiMessage);
@@ -84,7 +91,8 @@ public class AIServiceImpl implements AIService {
         List<AIMessage> history = loadHistory(conversation.getId());
 
         StringBuilder collected = new StringBuilder();
-        openRouterService.streamGenerateResponse(history, productCatalogBuilder.build(), token -> {
+        openRouterService.streamGenerateResponse(history,
+                productCatalogBuilder.build() + buildPersonalizationContext(userId, request.getPreferences()), token -> {
             collected.append(token);
             onToken.accept(token);
         });
@@ -96,6 +104,40 @@ public class AIServiceImpl implements AIService {
         AIMessage aiMessage = saveAssistantMessage(collected.toString(), conversation);
 
         return buildChatResponse(conversation.getId(), aiMessage);
+    }
+
+    private String buildPersonalizationContext(Long userId, AIChatPreferences preferences) {
+        var profile = fragranceProfileService.getOrGenerate(userId);
+        StringBuilder context = new StringBuilder("\n\nCustomer's saved scent profile (use only when making fragrance suggestions):")
+                .append("\n- Style: ").append(profile.getPersonality())
+                .append("\n- Sweetness: ").append(profile.getSweetness()).append("/100")
+                .append("\n- Floral: ").append(profile.getFloral()).append("/100")
+                .append("\n- Fresh: ").append(profile.getFresh()).append("/100")
+                .append("\n- Woody: ").append(profile.getWoody()).append("/100")
+                .append("\n- Intensity: ").append(profile.getIntensity());
+
+        if (preferences != null) {
+            appendList(context, "Preferred fragrance families", preferences.getFamilies());
+            appendList(context, "Preferred brands", preferences.getBrands());
+            appendValue(context, "Preferred gender", preferences.getGender());
+            appendValue(context, "Preferred intensity", preferences.getIntensity());
+            appendValue(context, "Minimum price", preferences.getPriceMin());
+            appendValue(context, "Maximum price", preferences.getPriceMax());
+        }
+        context.append("\nFollow these saved tastes when recommending perfumes, while prioritizing the customer's current message if it conflicts.");
+        return context.toString();
+    }
+
+    private void appendList(StringBuilder context, String label, List<String> values) {
+        if (values != null && !values.isEmpty()) {
+            context.append("\n- ").append(label).append(": ").append(String.join(", ", values));
+        }
+    }
+
+    private void appendValue(StringBuilder context, String label, Object value) {
+        if (value != null && !value.toString().isBlank()) {
+            context.append("\n- ").append(label).append(": ").append(value);
+        }
     }
 
     // =========================================================

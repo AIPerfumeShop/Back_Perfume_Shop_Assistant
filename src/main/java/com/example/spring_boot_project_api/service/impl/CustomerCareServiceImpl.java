@@ -275,8 +275,23 @@ public class CustomerCareServiceImpl implements CustomerCareService {
             conversation = new AIConversation();
             conversation.setUser(user);
             conversation.setUserName(user.getName());
-            conversation.setTitle("Support request");
+            String title = request.getSubject();
+            if (title == null || title.isBlank()) title = request.getCategory();
+            if (title == null || title.isBlank()) title = "Support request";
+            conversation.setTitle(generateConversationTitle(title));
             conversation = aiConversationRepository.save(conversation);
+        }
+
+        String openingMessage = request.getMessage();
+        if (openingMessage == null || openingMessage.isBlank()) {
+            openingMessage = request.getReason();
+        }
+        if (openingMessage != null && !openingMessage.isBlank()) {
+            AIMessage customerMessage = new AIMessage();
+            customerMessage.setConversation(conversation);
+            customerMessage.setSender(MessageSender.USER);
+            customerMessage.setMessage(openingMessage.trim());
+            aiMessageRepository.save(customerMessage);
         }
 
         supportTicketRepository
@@ -288,13 +303,19 @@ public class CustomerCareServiceImpl implements CustomerCareService {
                 });
 
         String summary = buildSummary(conversation);
-        String combined = (request.getReason() == null ? "" : request.getReason()) + " " + summary;
+        String reason = request.getReason();
+        if (reason == null || reason.isBlank()) {
+            reason = java.util.stream.Stream.of(request.getCategory(), request.getSubject())
+                    .filter(value -> value != null && !value.isBlank())
+                    .collect(java.util.stream.Collectors.joining(" — "));
+        }
+        String combined = (reason == null ? "" : reason) + " " + summary;
 
         SupportTicket ticket = new SupportTicket();
         ticket.setUser(user);
         ticket.setConversation(conversation);
         ticket.setTicketNumber(generateTicketNumber());
-        ticket.setReason(request.getReason());
+        ticket.setReason(reason);
         ticket.setSummary(summary);
         ticket.setOrderId(extractOrderId(combined));
         ticket.setPriority(detectPriority(combined));
@@ -308,7 +329,7 @@ public class CustomerCareServiceImpl implements CustomerCareService {
                 + ticket.getTicketNumber()
                 + " (" + ticket.getPriority() + ")\n"
                 + "Customer: " + user.getName()
-                + "\nReason: " + (request.getReason() == null ? "-" : request.getReason()));
+                + "\nReason: " + (reason == null || reason.isBlank() ? "-" : reason));
 
         return supportTicketMapper.toResponse(ticket);
     }
@@ -336,27 +357,51 @@ public class CustomerCareServiceImpl implements CustomerCareService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public SupportTicketDetailResponse getCustomerTicket(Long userId, Long ticketId) {
         SupportTicket ticket = findTicket(ticketId);
         checkOwnership(ticket, userId);
 
-        List<AIMessageResponse> messages = loadMessages(ticket);
+        List<AIMessageResponse> messages = loadMessagesWithLegacyOpeningMessage(ticket);
         //Internal notes are for agents only - never shown to the customer.
         return supportTicketMapper.toDetailResponse(
                 ticket, safeOrderForCustomer(ticket, userId), messages, java.util.List.of());
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public SupportTicketDetailResponse getAgentTicketContext(Long ticketId) {
         SupportTicket ticket = findTicket(ticketId);
 
-        List<AIMessageResponse> messages = loadMessages(ticket);
+        List<AIMessageResponse> messages = loadMessagesWithLegacyOpeningMessage(ticket);
         List<SupportTicketNoteResponse> notes = supportTicketMapper.toNoteResponseList(
                 noteRepository.findByTicketIdOrderByCreatedAtAsc(ticket.getId()));
 
         return supportTicketMapper.toDetailResponse(ticket, safeOrder(ticket), messages, notes);
+    }
+
+    /** Restores opening text from old form tickets where it was stored only in the reason. */
+    private List<AIMessageResponse> loadMessagesWithLegacyOpeningMessage(SupportTicket ticket) {
+        List<AIMessageResponse> messages = loadMessages(ticket);
+        if (!messages.isEmpty() || ticket.getConversation() == null || ticket.getReason() == null) {
+            return messages;
+        }
+
+        String reason = ticket.getReason().trim();
+        int separator = reason.indexOf(" — ");
+        if (separator < 0) return messages;
+        String category = reason.substring(0, separator).trim().toLowerCase(java.util.Locale.ROOT);
+        if (!List.of("orders", "payment", "delivery", "returns & refunds", "account", "other")
+                .contains(category)) return messages;
+        String openingText = reason.substring(separator + 3).trim();
+        if (openingText.isEmpty()) return messages;
+
+        AIMessage restoredMessage = new AIMessage();
+        restoredMessage.setConversation(ticket.getConversation());
+        restoredMessage.setSender(MessageSender.USER);
+        restoredMessage.setMessage(openingText);
+        aiMessageRepository.save(restoredMessage);
+        return loadMessages(ticket);
     }
 
     private OrderResponse safeOrder(SupportTicket ticket) {

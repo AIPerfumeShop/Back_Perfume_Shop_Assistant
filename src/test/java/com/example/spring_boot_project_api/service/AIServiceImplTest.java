@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
+import com.example.spring_boot_project_api.dto.response.ai.CustomerFragranceProfileResponse;
 import com.example.spring_boot_project_api.enums.MessageSender;
 import com.example.spring_boot_project_api.exception.AIServiceException;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
@@ -32,6 +33,7 @@ import com.example.spring_boot_project_api.repository.AIConversationRepository;
 import com.example.spring_boot_project_api.repository.AIMessageRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.impl.AIServiceImpl;
+import com.example.spring_boot_project_api.service.CustomerFragranceProfileService;
 import com.example.spring_boot_project_api.util.ProductCatalogBuilder;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,12 +57,21 @@ class AIServiceImplTest {
     @Mock
     private OpenRouterService openRouterService;
 
+    @Mock
+    private CustomerFragranceProfileService fragranceProfileService;
+
     @InjectMocks
     private AIServiceImpl aiService;
 
     @BeforeEach
     void setUp() {
         lenient().when(productCatalogBuilder.build()).thenReturn("");
+        lenient().when(fragranceProfileService.getOrGenerate(any())).thenReturn(
+                CustomerFragranceProfileResponse.builder()
+                        .personality("Balanced Explorer")
+                        .sweetness(50).floral(50).fresh(50).woody(50)
+                        .intensity("MEDIUM")
+                        .build());
     }
 
     private User user(Long id) {

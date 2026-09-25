@@ -3,8 +3,10 @@ package com.example.spring_boot_project_api.service.impl;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -13,10 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationClickRequest;
 import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationRequest;
+import com.example.spring_boot_project_api.dto.request.ai.AIChatPreferences;
 import com.example.spring_boot_project_api.dto.request.ai.AISearchPreferences;
 import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequest;
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationClickResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationResponse;
+import com.example.spring_boot_project_api.dto.response.ai.CustomerFragranceProfileResponse;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
@@ -36,6 +40,7 @@ import com.example.spring_boot_project_api.repository.ProductRepository.ProductR
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.repository.specification.ProductSpecification;
 import com.example.spring_boot_project_api.service.AIRecommendationService;
+import com.example.spring_boot_project_api.service.CustomerFragranceProfileService;
 import com.example.spring_boot_project_api.service.OpenRouterService;
 
 @Service
@@ -49,6 +54,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
     private final AIMessageRepository messageRepository;
     private final UserRepository userRepository;
     private final OpenRouterService openRouterService;
+    private final CustomerFragranceProfileService fragranceProfileService;
 
     public AIRecommendationServiceImpl(
             ProductRepository productRepository,
@@ -57,7 +63,8 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
             AIConversationRepository conversationRepository,
             AIMessageRepository messageRepository,
             UserRepository userRepository,
-            OpenRouterService openRouterService) {
+            OpenRouterService openRouterService,
+            CustomerFragranceProfileService fragranceProfileService) {
         this.productRepository = productRepository;
         this.recommendationRepository = recommendationRepository;
         this.clickRepository = clickRepository;
@@ -65,6 +72,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         this.messageRepository = messageRepository;
         this.userRepository = userRepository;
         this.openRouterService = openRouterService;
+        this.fragranceProfileService = fragranceProfileService;
     }
 
     @Override
@@ -73,6 +81,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         final AIRecommendationRequest req = request == null ? new AIRecommendationRequest() : request;
         int limit = req.getLimit() == null ? 5 : req.getLimit();
         AIConversation conversation = resolveConversation(userId, req.getConversationId());
+        CustomerFragranceProfileResponse customerProfile = fragranceProfileService.getOrGenerate(userId);
 
         // Personalize from the chat history when the caller did not supply
         // explicit filters of its own (the frontend widget only sends a
@@ -92,15 +101,33 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
             }
         }
 
-        List<Product> products = queryProducts(source, limit);
-        if (products.isEmpty() && personalized) {
-            // The chat's preferences matched nothing — fall back to the
-            // generic top-rated, in-stock query instead of an empty panel.
-            source = req;
-            products = queryProducts(req, limit);
+        AIRecommendationRequest criteria = mergeSavedPreferences(source, req.getPreferences());
+        int candidateLimit = Math.max(60, Math.min(100, limit * 20));
+        List<Product> candidates = queryProducts(criteria, candidateLimit);
+        if (candidates.isEmpty() && !sameFilters(criteria, source)) {
+            candidates = queryProducts(source, candidateLimit);
         }
-        final String displayedReason = buildReason(source);
-        final List<Product> finalProducts = products;
+        if (candidates.isEmpty() && (personalized || req.getPreferences() != null)) {
+            AIRecommendationRequest broadRequest = new AIRecommendationRequest();
+            broadRequest.setConversationId(req.getConversationId());
+            broadRequest.setLimit(req.getLimit());
+            candidates = queryProducts(broadRequest, candidateLimit);
+        }
+        Set<Long> previouslyRecommended = conversation == null
+                ? Set.of()
+                : recommendationRepository.findByConversationId(conversation.getId()).stream()
+                        .map(recommendation -> recommendation.getProduct().getId())
+                        .collect(Collectors.toSet());
+        AIRecommendationRequest rankingCriteria = source;
+        final List<Product> finalProducts = candidates.stream()
+                .sorted(Comparator
+                        .comparing((Product product) -> previouslyRecommended.contains(product.getId()))
+                        .thenComparing(Comparator.comparingInt((Product product) ->
+                                preferenceScore(product, req.getPreferences(), rankingCriteria, customerProfile)).reversed())
+                        .thenComparing(Product::getId))
+                .limit(limit)
+                .toList();
+        final String displayedReason = buildReason(criteria);
 
         List<Long> ids = finalProducts.stream()
                 .map(Product::getId)
@@ -141,6 +168,97 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         }
 
         return responses;
+    }
+
+    private AIRecommendationRequest mergeSavedPreferences(AIRecommendationRequest base, AIChatPreferences preferences) {
+        if (preferences == null) return base;
+        AIRecommendationRequest merged = new AIRecommendationRequest();
+        merged.setConversationId(base.getConversationId());
+        merged.setLimit(base.getLimit());
+        merged.setSearch(base.getSearch());
+        merged.setCategoryId(base.getCategoryId());
+        merged.setBrand(base.getBrand());
+        merged.setGender(base.getGender());
+        merged.setFragranceFamily(base.getFragranceFamily());
+        merged.setMinPrice(base.getMinPrice());
+        merged.setMaxPrice(base.getMaxPrice());
+        merged.setMinRate(base.getMinRate());
+        merged.setPreferences(preferences);
+        if (merged.getBrand() == null && preferences.getBrands() != null && preferences.getBrands().size() == 1) {
+            merged.setBrand(preferences.getBrands().get(0));
+        }
+        if (merged.getGender() == null && preferences.getGender() != null) {
+            try { merged.setGender(com.example.spring_boot_project_api.enums.Gender.valueOf(
+                    preferences.getGender().trim().toUpperCase(Locale.ROOT))); }
+            catch (IllegalArgumentException ignored) { /* ranking still uses other saved preferences */ }
+        }
+        if (merged.getFragranceFamily() == null && preferences.getFamilies() != null
+                && preferences.getFamilies().size() == 1) {
+            merged.setFragranceFamily(preferences.getFamilies().get(0));
+        }
+        if (merged.getMinPrice() == null) merged.setMinPrice(preferences.getPriceMin());
+        if (merged.getMaxPrice() == null) merged.setMaxPrice(preferences.getPriceMax());
+        return merged;
+    }
+
+    private boolean sameFilters(AIRecommendationRequest first, AIRecommendationRequest second) {
+        return Objects.equals(first.getSearch(), second.getSearch())
+                && Objects.equals(first.getCategoryId(), second.getCategoryId())
+                && Objects.equals(first.getBrand(), second.getBrand())
+                && Objects.equals(first.getGender(), second.getGender())
+                && Objects.equals(first.getFragranceFamily(), second.getFragranceFamily())
+                && Objects.equals(first.getMinPrice(), second.getMinPrice())
+                && Objects.equals(first.getMaxPrice(), second.getMaxPrice());
+    }
+
+    private int preferenceScore(Product product, AIChatPreferences preferences,
+            AIRecommendationRequest chatCriteria, CustomerFragranceProfileResponse customerProfile) {
+        int score = 0;
+        var fragrance = product.getFragranceProfile();
+        String family = fragrance == null || fragrance.getFragranceFamily() == null
+                ? "" : fragrance.getFragranceFamily().toLowerCase(Locale.ROOT);
+        String notes = fragrance == null || fragrance.getFragNotes() == null
+                ? "" : fragrance.getFragNotes().toLowerCase(Locale.ROOT);
+        String brand = product.getBrand() == null || product.getBrand().getName() == null
+                ? "" : product.getBrand().getName().toLowerCase(Locale.ROOT);
+
+        if (preferences != null) {
+            if (preferences.getFamilies() != null && preferences.getFamilies().stream()
+                    .filter(Objects::nonNull).map(value -> value.toLowerCase(Locale.ROOT))
+                    .anyMatch(value -> family.contains(value))) score += 8;
+            if (preferences.getBrands() != null && preferences.getBrands().stream()
+                    .filter(Objects::nonNull).map(value -> value.toLowerCase(Locale.ROOT))
+                    .anyMatch(value -> brand.contains(value))) score += 8;
+            if (preferences.getGender() != null && fragrance != null && fragrance.getGender() != null
+                    && fragrance.getGender().name().equalsIgnoreCase(preferences.getGender())) score += 5;
+            if (preferences.getIntensity() != null && fragrance != null && fragrance.getIntensity() != null
+                    && fragrance.getIntensity().name().equalsIgnoreCase(preferences.getIntensity())) score += 4;
+            BigDecimal price = lowestPrice(product);
+            if ((preferences.getPriceMin() == null || price.compareTo(preferences.getPriceMin()) >= 0)
+                    && (preferences.getPriceMax() == null || price.compareTo(preferences.getPriceMax()) <= 0)) score += 4;
+        }
+
+        if (chatCriteria.getBrand() != null && brand.contains(chatCriteria.getBrand().toLowerCase(Locale.ROOT))) score += 8;
+        if (chatCriteria.getFragranceFamily() != null
+                && family.contains(chatCriteria.getFragranceFamily().toLowerCase(Locale.ROOT))) score += 8;
+        if (chatCriteria.getGender() != null && fragrance != null && fragrance.getGender() == chatCriteria.getGender()) score += 5;
+        score += scentProfileScore(family, notes, "floral", customerProfile.getFloral());
+        score += scentProfileScore(family, notes, "fresh", customerProfile.getFresh());
+        score += scentProfileScore(family, notes, "woody", customerProfile.getWoody());
+        score += scentProfileScore(family, notes, "sweet", customerProfile.getSweetness());
+        return score;
+    }
+
+    private int scentProfileScore(String family, String notes, String scent, Integer preference) {
+        if (preference == null || preference < 55) return 0;
+        boolean matches = switch (scent) {
+            case "sweet" -> family.contains("sweet") || family.contains("gourmand")
+                    || notes.contains("vanilla") || notes.contains("caramel") || notes.contains("honey");
+            case "woody" -> family.contains("wood") || family.contains("amber")
+                    || notes.contains("cedar") || notes.contains("sandalwood") || notes.contains("oud");
+            default -> family.contains(scent) || notes.contains(scent);
+        };
+        return matches ? preference / 20 : 0;
     }
 
     @Override

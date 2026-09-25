@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -33,13 +35,25 @@ public class OpenRouterServiceImpl implements OpenRouterService {
     private static final String DATA_PREFIX = "data:";
     private static final String DONE = "[DONE]";
 
+    private static final List<String> FREE_GEMINI_MODELS = List.of(
+            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.1-flash-lite");
+
     private static final Logger log = LoggerFactory.getLogger(OpenRouterServiceImpl.class);
 
     private final RestClient restClient;
 
+    private final RestClient geminiClient;
+
     private final String apiKey;
 
     private final String model;
+
+    private final String geminiApiKey;
+
+    private final String geminiModel;
 
     private final String systemPrompt;
 
@@ -49,6 +63,8 @@ public class OpenRouterServiceImpl implements OpenRouterService {
             @Value("${openrouter.url}") String url,
             @Value("${openrouter.api-key}") String apiKey,
             @Value("${openrouter.model}") String model,
+            @Value("${gemini.api-key:}") String geminiApiKey,
+            @Value("${gemini.model:gemini-3.8-flash}") String geminiModel,
             @Value("${ai.system-prompt:"
                     + "You are the friendly assistant of Blossom Fragrance perfume shop. "
                     + "Recommend only perfumes that exist in the shop catalog. "
@@ -59,10 +75,15 @@ public class OpenRouterServiceImpl implements OpenRouterService {
 
         this.apiKey = apiKey;
         this.model = model;
+        this.geminiApiKey = geminiApiKey;
+        this.geminiModel = geminiModel;
         this.systemPrompt = systemPrompt;
 
         this.restClient = RestClient.builder()
                 .baseUrl(url)
+                .build();
+        this.geminiClient = RestClient.builder()
+                .baseUrl("https://generativelanguage.googleapis.com/v1beta/openai")
                 .build();
     }
 
@@ -124,16 +145,22 @@ public class OpenRouterServiceImpl implements OpenRouterService {
                     .getContent();
 
         } catch (AIServiceException ex) {
+            return generateWithGeminiOrThrow(messages, productCatalog, ex);
 
-            // Keep our own AI exception
-            throw ex;
+        } catch (RestClientResponseException ex) {
+            return generateWithGeminiOrThrow(messages, productCatalog, providerResponseFailure(ex, "chat request"));
+
+        } catch (ResourceAccessException ex) {
+            log.error("OpenRouter is unreachable during non-stream call", ex);
+            return generateWithGeminiOrThrow(messages, productCatalog,
+                    new AIServiceException("OpenRouter could not be reached. Check the backend network connection.", ex));
 
         } catch (Exception ex) {
 
             // Convert OpenRouter errors into our AI exception
             log.error("OpenRouter non-stream call failed", ex);
-            throw new AIServiceException(
-                    "Failed to communicate with OpenRouter", ex);
+            return generateWithGeminiOrThrow(messages, productCatalog,
+                    new AIServiceException("Failed to communicate with OpenRouter", ex));
         }
     }
 
@@ -190,11 +217,32 @@ public class OpenRouterServiceImpl implements OpenRouterService {
                     });
 
         } catch (AIServiceException ex) {
-            throw ex;
+            streamWithGeminiOrThrow(messages, productCatalog, onToken, ex);
+        } catch (RestClientResponseException ex) {
+            streamWithGeminiOrThrow(messages, productCatalog, onToken, providerResponseFailure(ex, "stream request"));
+        } catch (ResourceAccessException ex) {
+            log.error("OpenRouter is unreachable during stream call", ex);
+            streamWithGeminiOrThrow(messages, productCatalog, onToken,
+                    new AIServiceException("OpenRouter could not be reached. Check the backend network connection.", ex));
         } catch (Exception ex) {
             log.error("OpenRouter stream call failed", ex);
-            throw new AIServiceException("Failed to stream response from OpenRouter", ex);
+            streamWithGeminiOrThrow(messages, productCatalog, onToken,
+                    new AIServiceException("Failed to stream response from OpenRouter", ex));
         }
+    }
+
+    private AIServiceException providerResponseFailure(RestClientResponseException ex, String operation) {
+        int status = ex.getStatusCode().value();
+        String guidance = switch (status) {
+            case 401, 403 -> "Check that OPENROUTER_API_KEY is valid in the backend environment.";
+            case 402 -> "OpenRouter rejected the account or provider quota for this request.";
+            case 429 -> "OpenRouter rate limit reached. Wait briefly and try again.";
+            default -> status >= 500
+                    ? "The OpenRouter provider is temporarily unavailable. Try again shortly."
+                    : "Check the request configuration and backend logs.";
+        };
+        log.error("OpenRouter {} failed with HTTP {}", operation, status, ex);
+        return new AIServiceException("OpenRouter returned HTTP " + status + ". " + guidance, ex);
     }
 
     @Override
@@ -214,8 +262,7 @@ public class OpenRouterServiceImpl implements OpenRouterService {
                 If no preference can be inferred at all, return {"search":null}.
                 """;
 
-        try {
-            List<OpenRouterMessage> openRouterMessages = messages.stream()
+        List<OpenRouterMessage> openRouterMessages = messages.stream()
                     .map(message -> {
                         String role = message.getSender() == MessageSender.USER
                                 ? "user"
@@ -227,9 +274,11 @@ public class OpenRouterServiceImpl implements OpenRouterService {
                     })
                     .toList();
 
-            List<OpenRouterMessage> payload = new ArrayList<>(openRouterMessages.size() + 1);
-            payload.add(new OpenRouterMessage("system", extractionPrompt));
-            payload.addAll(openRouterMessages);
+        List<OpenRouterMessage> payload = new ArrayList<>(openRouterMessages.size() + 1);
+        payload.add(new OpenRouterMessage("system", extractionPrompt));
+        payload.addAll(openRouterMessages);
+
+        try {
 
             OpenRouterRequest request = new OpenRouterRequest(model, payload);
 
@@ -250,9 +299,131 @@ public class OpenRouterServiceImpl implements OpenRouterService {
 
             return parseSearchPreferences(response.getChoices().get(0).getMessage().getContent());
         } catch (Exception ex) {
-            log.warn("Failed to extract AI search preferences", ex);
+            log.warn("OpenRouter preference extraction failed; trying Gemini fallback", ex);
+            if (!isGeminiConfigured()) return AISearchPreferences.empty();
+            for (String candidateModel : geminiModelCandidates()) {
+                try {
+                    OpenRouterRequest fallbackRequest = new OpenRouterRequest(candidateModel, payload);
+                    OpenRouterResponse fallbackResponse = geminiClient.post()
+                            .uri("/chat/completions")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Authorization", "Bearer " + geminiApiKey)
+                            .body(fallbackRequest)
+                            .retrieve()
+                            .body(OpenRouterResponse.class);
+                    if (fallbackResponse != null && fallbackResponse.getChoices() != null
+                            && !fallbackResponse.getChoices().isEmpty()
+                            && fallbackResponse.getChoices().get(0).getMessage() != null
+                            && fallbackResponse.getChoices().get(0).getMessage().getContent() != null) {
+                        return parseSearchPreferences(fallbackResponse.getChoices().get(0).getMessage().getContent());
+                    }
+                } catch (Exception fallbackException) {
+                    log.warn("Gemini preference extraction failed for model {}", candidateModel, fallbackException);
+                }
+            }
             return AISearchPreferences.empty();
         }
+    }
+
+    private boolean isGeminiConfigured() {
+        return geminiApiKey != null && !geminiApiKey.isBlank();
+    }
+
+    private List<String> geminiModelCandidates() {
+        List<String> candidates = new ArrayList<>();
+        if (FREE_GEMINI_MODELS.contains(geminiModel)) {
+            candidates.add(geminiModel);
+        } else if (geminiModel != null && !geminiModel.isBlank()) {
+            log.warn("Configured Gemini model is not on the free-model allowlist; ignoring it");
+        }
+        FREE_GEMINI_MODELS.stream().filter(candidate -> !candidates.contains(candidate)).forEach(candidates::add);
+        return candidates;
+    }
+
+    private String generateWithGeminiOrThrow(List<AIMessage> messages, String productCatalog, AIServiceException openRouterFailure) {
+        if (!isGeminiConfigured()) throw openRouterFailure;
+        log.warn("OpenRouter failed; retrying this AI request with Gemini");
+        List<OpenRouterMessage> payload = messages.stream()
+                .map(message -> new OpenRouterMessage(
+                        message.getSender() == MessageSender.USER ? "user" : "assistant", message.getMessage()))
+                .toList();
+        Exception lastFailure = null;
+        for (String candidateModel : geminiModelCandidates()) {
+            try {
+                OpenRouterResponse response = geminiClient.post()
+                        .uri("/chat/completions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + geminiApiKey)
+                        .body(new OpenRouterRequest(candidateModel, withSystemPrompt(productCatalog, payload)))
+                        .retrieve().body(OpenRouterResponse.class);
+                if (response != null && response.getChoices() != null && !response.getChoices().isEmpty()
+                        && response.getChoices().get(0).getMessage() != null
+                        && response.getChoices().get(0).getMessage().getContent() != null) {
+                    return response.getChoices().get(0).getMessage().getContent();
+                }
+                lastFailure = new AIServiceException("Gemini returned no response for model " + candidateModel);
+            } catch (Exception geminiFailure) {
+                lastFailure = geminiFailure;
+                log.warn("Gemini fallback failed for model {}; trying next configured fallback", candidateModel, geminiFailure);
+            }
+        }
+        log.error("All Gemini fallback models failed", lastFailure);
+        throw new AIServiceException("OpenRouter and Gemini both failed. Check provider keys, quotas, and backend logs.", lastFailure);
+    }
+
+    private void streamWithGeminiOrThrow(List<AIMessage> messages, String productCatalog, Consumer<String> onToken,
+            AIServiceException openRouterFailure) {
+        if (!isGeminiConfigured()) throw openRouterFailure;
+        log.warn("OpenRouter streaming failed; retrying this AI request with Gemini");
+        List<OpenRouterMessage> payload = messages.stream()
+                .map(message -> new OpenRouterMessage(
+                        message.getSender() == MessageSender.USER ? "user" : "assistant", message.getMessage()))
+                .toList();
+        Exception lastFailure = null;
+        for (String candidateModel : geminiModelCandidates()) {
+            java.util.concurrent.atomic.AtomicBoolean emittedToken = new java.util.concurrent.atomic.AtomicBoolean();
+            try {
+                OpenRouterRequest request = new OpenRouterRequest(candidateModel, withSystemPrompt(productCatalog, payload), true);
+                geminiClient.post().uri("/chat/completions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .header("Authorization", "Bearer " + geminiApiKey)
+                        .body(request)
+                        .exchange((httpRequest, httpResponse) -> {
+                            if (httpResponse.getStatusCode().isError()) {
+                                throw new IllegalStateException("Gemini returned HTTP " + httpResponse.getStatusCode().value());
+                            }
+                            try (BufferedReader reader = new BufferedReader(new InputStreamReader(httpResponse.getBody(), StandardCharsets.UTF_8))) {
+                                String line;
+                                while ((line = reader.readLine()) != null) {
+                                    if (!line.startsWith(DATA_PREFIX)) continue;
+                                    String data = line.substring(DATA_PREFIX.length()).trim();
+                                    if (data.isEmpty() || DONE.equals(data)) continue;
+                                    OpenRouterStreamChunk chunk = objectMapper.readValue(data, OpenRouterStreamChunk.class);
+                                    if (chunk.getChoices() != null && !chunk.getChoices().isEmpty()
+                                            && chunk.getChoices().get(0).getDelta() != null) {
+                                        String content = chunk.getChoices().get(0).getDelta().getContent();
+                                        if (content != null && !content.isEmpty()) {
+                                            emittedToken.set(true);
+                                            onToken.accept(content);
+                                        }
+                                    }
+                                }
+                            }
+                            return null;
+                        });
+                if (emittedToken.get()) return;
+                lastFailure = new IllegalStateException("Gemini returned no streamed content for model " + candidateModel);
+            } catch (Exception geminiFailure) {
+                if (emittedToken.get()) {
+                    throw new AIServiceException("Gemini stream was interrupted after starting the response.", geminiFailure);
+                }
+                lastFailure = geminiFailure;
+                log.warn("Gemini streaming failed for model {}; trying next fallback", candidateModel, geminiFailure);
+            }
+        }
+        log.error("All Gemini streaming fallback models failed", lastFailure);
+        throw new AIServiceException("OpenRouter and Gemini both failed. Check provider keys, quotas, and backend logs.", lastFailure);
     }
 
     private AISearchPreferences parseSearchPreferences(String rawJson) {

@@ -7,6 +7,7 @@ import com.example.spring_boot_project_api.enums.Gender;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -28,4 +29,7 @@ public class AIRecommendationRequest {
     @Min(value = 1, message = "Limit must be at least 1")
     @Max(value = 20, message = "Limit must be at most 20")
     private Integer limit = 5;
+
+    @Valid
+    private AIChatPreferences preferences;
 }

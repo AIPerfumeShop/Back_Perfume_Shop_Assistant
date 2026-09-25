@@ -108,10 +108,6 @@ public class ReviewServiceImpl implements ReviewService {
         review.setModerationNote(note);
 
         Review saved = reviewRepository.save(review);
-        if (notificationService != null) {
-            notificationService.notifyAdmins(NotificationType.NEW_REVIEW, "New customer review",
-                    user.getName() + " reviewed " + product.getName() + ".", saved.getId());
-        }
         return reviewMapper.toResponse(saved);
     }
 
@@ -171,7 +167,12 @@ public class ReviewServiceImpl implements ReviewService {
         review.setComment(request.getComment());
         review.setIsApproved(true);
         review.setIsDeleted(false);
-        return reviewMapper.toResponse(reviewRepository.save(review));
+        Review saved = reviewRepository.save(review);
+        if (notificationService != null) {
+            notificationService.notifyAdmins(NotificationType.NEW_REVIEW, "New customer review",
+                    user.getName() + " reviewed " + product.getName() + ".", saved.getId());
+        }
+        return reviewMapper.toResponse(saved);
     }
 
     //Get approved reviews for a product (public)
