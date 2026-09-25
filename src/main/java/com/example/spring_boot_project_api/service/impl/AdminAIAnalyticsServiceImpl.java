@@ -609,8 +609,8 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
                 window.start(), window.end(), OrderStatus.CANCELLED);
         List<Long> returningIds = orderRepository.findDistinctCustomerIdsBetween(
                 previous.start(), previous.end(), OrderStatus.CANCELLED);
-        List<OrderRepository.CustomerAggregateStat> aggregates =
-                orderRepository.findCustomerAggregatesBetween(
+        List<OrderRepository.CustomerOrderCountStat> aggregates =
+                orderRepository.findCustomerOrderCountsBetween(
                         window.start(), window.end(), OrderStatus.CANCELLED);
 
         long activeCustomers = activeIds.size();
@@ -624,9 +624,9 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
         Double repeatPurchaseRate = activeCustomers == 0
                 ? 0.0
                 : round2(repeatCustomers * 100.0 / activeCustomers);
-        Double purchaseFrequency = purchaseIntervals == 0
-                ? (activeCustomers == 0 ? 0.0 : 1.0)
-                : round2(((double) purchaseIntervals) / activeCustomers);
+        Double purchaseFrequency = activeCustomers == 0
+                ? 0.0
+                : round2(((double) purchaseIntervals + activeCustomers) / activeCustomers);
         BigDecimal revenue = orderRepository.sumTotalAmountBetween(
                 window.start(), window.end(), OrderStatus.CANCELLED);
         BigDecimal averageRevenuePerCustomer = activeCustomers == 0
