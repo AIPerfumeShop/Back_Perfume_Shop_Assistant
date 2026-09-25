@@ -10,6 +10,7 @@ import lombok.Setter;
 public class OrderItemResponse {
     private Long id;
     private Long variantId;
+    private Long productId;
     private String productName;
     private String brand;
     private String variantSize;

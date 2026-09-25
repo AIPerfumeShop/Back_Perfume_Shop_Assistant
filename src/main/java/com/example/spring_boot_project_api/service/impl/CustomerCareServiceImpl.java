@@ -14,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.cs.CsChatRequest;
@@ -29,6 +30,7 @@ import com.example.spring_boot_project_api.dto.response.cs.SupportTicketResponse
 import com.example.spring_boot_project_api.dto.response.order.OrderItemResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderResponse;
 import com.example.spring_boot_project_api.enums.MessageSender;
+import com.example.spring_boot_project_api.enums.NotificationType;
 import com.example.spring_boot_project_api.enums.OrderStatus;
 import com.example.spring_boot_project_api.enums.TicketPriority;
 import com.example.spring_boot_project_api.enums.TicketStatus;
@@ -55,6 +57,7 @@ import com.example.spring_boot_project_api.service.OpenRouterService;
 import com.example.spring_boot_project_api.util.ProductCatalogBuilder;
 import com.example.spring_boot_project_api.service.OrderService;
 import com.example.spring_boot_project_api.service.TelegramService;
+import com.example.spring_boot_project_api.service.NotificationService;
 
 @Service
 @Transactional
@@ -80,10 +83,12 @@ public class CustomerCareServiceImpl implements CustomerCareService {
     private final OpenRouterService openRouterService;
     private final TelegramService telegramService;
     private final ProductCatalogBuilder productCatalogBuilder;
+    private final NotificationService notificationService;
 
     @Value("${customer-care.offline:false}")
     private boolean teamOffline;
 
+    @Autowired
     public CustomerCareServiceImpl(
             SupportTicketRepository supportTicketRepository,
             SupportTicketNoteRepository noteRepository,
@@ -97,7 +102,8 @@ public class CustomerCareServiceImpl implements CustomerCareService {
             OrderRepository orderRepository,
             OpenRouterService openRouterService,
             TelegramService telegramService,
-            ProductCatalogBuilder productCatalogBuilder) {
+            ProductCatalogBuilder productCatalogBuilder,
+            NotificationService notificationService) {
         this.supportTicketRepository = supportTicketRepository;
         this.noteRepository = noteRepository;
         this.aiConversationRepository = aiConversationRepository;
@@ -111,6 +117,7 @@ public class CustomerCareServiceImpl implements CustomerCareService {
         this.openRouterService = openRouterService;
         this.telegramService = telegramService;
         this.productCatalogBuilder = productCatalogBuilder;
+        this.notificationService = notificationService;
     }
 
     private enum Intent {
@@ -294,6 +301,8 @@ public class CustomerCareServiceImpl implements CustomerCareService {
         ticket.setStatus(teamOffline ? TicketStatus.PENDING : TicketStatus.OPEN);
 
         ticket = supportTicketRepository.save(ticket);
+        notificationService.notifyAdmins(NotificationType.SERVICE_REQUEST, "Customer service request",
+                user.getName() + " submitted support request " + ticket.getTicketNumber() + ".", ticket.getId());
 
         telegramService.sendMessage("👩‍💼 New support request "
                 + ticket.getTicketNumber()

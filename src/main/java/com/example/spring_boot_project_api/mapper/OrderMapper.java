@@ -54,6 +54,9 @@ public class OrderMapper {
         response.setId(item.getId());
         if (item.getVariant() != null) {
             response.setVariantId(item.getVariant().getId());
+            if (item.getVariant().getProduct() != null) {
+                response.setProductId(item.getVariant().getProduct().getId());
+            }
         }
         response.setProductName(item.getProductName());
         response.setBrand(item.getBrand());

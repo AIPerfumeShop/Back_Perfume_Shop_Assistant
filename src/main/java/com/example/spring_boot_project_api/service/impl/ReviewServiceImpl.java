@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.example.spring_boot_project_api.dto.request.review.ReviewFilterRequest;
 import com.example.spring_boot_project_api.dto.request.review.ReviewRequest;
@@ -29,6 +30,8 @@ import com.example.spring_boot_project_api.repository.ReviewRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.repository.specification.ReviewSpecification;
 import com.example.spring_boot_project_api.service.ReviewService;
+import com.example.spring_boot_project_api.service.NotificationService;
+import com.example.spring_boot_project_api.enums.NotificationType;
 
 @Service
 @Transactional
@@ -37,16 +40,28 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewMapper reviewMapper;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public ReviewServiceImpl(
             ReviewRepository reviewRepository,
             ReviewMapper reviewMapper,
             ProductRepository productRepository,
             UserRepository userRepository) {
+        this(reviewRepository, reviewMapper, productRepository, userRepository, null);
+    }
+
+    @Autowired
+    public ReviewServiceImpl(
+            ReviewRepository reviewRepository,
+            ReviewMapper reviewMapper,
+            ProductRepository productRepository,
+            UserRepository userRepository,
+            NotificationService notificationService) {
         this.reviewRepository = reviewRepository;
         this.reviewMapper = reviewMapper;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     //Get all reviews with filtering and pagination (admin)
@@ -92,7 +107,12 @@ public class ReviewServiceImpl implements ReviewService {
         review.setIsApproved(approved);
         review.setModerationNote(note);
 
-        return reviewMapper.toResponse(reviewRepository.save(review));
+        Review saved = reviewRepository.save(review);
+        if (notificationService != null) {
+            notificationService.notifyAdmins(NotificationType.NEW_REVIEW, "New customer review",
+                    user.getName() + " reviewed " + product.getName() + ".", saved.getId());
+        }
+        return reviewMapper.toResponse(saved);
     }
 
     //Delete an inappropriate review (soft delete, admin)

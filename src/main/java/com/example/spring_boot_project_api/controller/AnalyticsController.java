@@ -14,6 +14,9 @@ import com.example.spring_boot_project_api.dto.response.analytics.DashboardRespo
 import com.example.spring_boot_project_api.dto.response.analytics.ProductAnalyticsResponse;
 import com.example.spring_boot_project_api.dto.response.analytics.SalesAnalyticsResponse;
 import com.example.spring_boot_project_api.service.AnalyticsService;
+import com.example.spring_boot_project_api.repository.ExpenseRepository;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -23,9 +26,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 @RequestMapping("/api/analytics")
 public class AnalyticsController {
     private final AnalyticsService analyticsService;
+    private final ExpenseRepository expenseRepository;
 
-    public AnalyticsController(AnalyticsService analyticsService) {
+    public AnalyticsController(AnalyticsService analyticsService, ExpenseRepository expenseRepository) {
         this.analyticsService = analyticsService;
+        this.expenseRepository = expenseRepository;
     }
 
     @Operation(summary = "Get revenue and order statistics with optional date range")
@@ -86,5 +91,27 @@ public class AnalyticsController {
     public ResponseEntity<DashboardResponse> getDashboard(
             @ModelAttribute AnalyticsFilterRequest filter) {
         return ResponseEntity.ok(analyticsService.getDashboard(filter));
+    }
+
+    @Operation(summary = "Get analytics overview (alias for dashboard)")
+    @GetMapping("/overview")
+    public ResponseEntity<DashboardResponse> getOverview(@ModelAttribute AnalyticsFilterRequest filter) {
+        return ResponseEntity.ok(analyticsService.getDashboard(filter));
+    }
+
+    @Operation(summary = "Get expense totals grouped by category")
+    @GetMapping("/expenses")
+    public ResponseEntity<ExpenseAnalyticsResponse> getExpenseAnalytics(
+            @ModelAttribute AnalyticsFilterRequest filter) {
+        LocalDate from = filter.getFrom() == null ? LocalDate.of(1900, 1, 1) : filter.getFrom();
+        LocalDate to = filter.getTo() == null ? LocalDate.of(9999, 12, 31) : filter.getTo();
+        BigDecimal total = expenseRepository.sumAmountBetween(from, to);
+        var categories = expenseRepository.sumAmountByCategoryBetween(from, to).stream()
+                .map(row -> new ExpenseAnalyticsResponse.CategoryTotal(row.getCategory(), row.getTotal())).toList();
+        return ResponseEntity.ok(new ExpenseAnalyticsResponse(total, categories));
+    }
+
+    public record ExpenseAnalyticsResponse(BigDecimal totalExpenses, java.util.List<CategoryTotal> categories) {
+        public record CategoryTotal(String category, BigDecimal total) { }
     }
 }

@@ -109,4 +109,11 @@ public class AdminAIAnalyticsController {
             @ModelAttribute AnalyticsFilterRequest filter) {
         return ResponseEntity.ok(adminAIAnalyticsService.getBusinessBriefing(filter));
     }
+
+    @Operation(summary = "Get the latest AI business insights")
+    @GetMapping("/insights")
+    public ResponseEntity<AdminBusinessBriefingResponse> getInsights(
+            @ModelAttribute AnalyticsFilterRequest filter) {
+        return ResponseEntity.ok(adminAIAnalyticsService.getBusinessBriefing(filter));
+    }
 }

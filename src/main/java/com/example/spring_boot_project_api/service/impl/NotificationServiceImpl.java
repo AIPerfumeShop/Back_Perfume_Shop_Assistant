@@ -10,6 +10,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.notification.NotificationResponse;
@@ -56,6 +57,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyAdmins(NotificationType type, String title, String body, Long relatedId) {
         Notification notification = buildNotification(type, title, body, relatedId);
         notification.setRecipientRole(ROLE_ADMIN);
@@ -67,6 +69,10 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void recordOrderPlaced(Order order) {
         saveHistory(order, OrderStatus.PENDING, null);
+        if (order != null && order.getId() != null) {
+            notifyAdmins(NotificationType.NEW_ORDER, "New order #" + order.getId(),
+                    "A customer placed a new order.", order.getId());
+        }
     }
 
     @Override
@@ -86,19 +92,26 @@ public class NotificationServiceImpl implements NotificationService {
                     "Your order is now " + humanize(newStatus),
                     order.getId());
         }
+        if (newStatus == OrderStatus.PAID) {
+            notifyAdmins(NotificationType.PAYMENT_RECEIVED, "Payment received for order #" + order.getId(),
+                    "Payment was confirmed successfully.", order.getId());
+        } else if (newStatus == OrderStatus.CANCELLED) {
+            notifyAdmins(NotificationType.ORDER_CANCELLED, "Order #" + order.getId() + " cancelled",
+                    note == null || note.isBlank() ? "An order was cancelled." : note, order.getId());
+        }
     }
 
     @Override
     public void stockAlert(Long variantId, String productName, int currentStock) {
+        NotificationType type = currentStock <= 0 ? NotificationType.OUT_OF_STOCK : NotificationType.LOW_STOCK;
         if (variantId == null
-                || notificationRepository.existsByTypeAndRelatedIdAndIsReadFalse(
-                        NotificationType.STOCK_ALERT, variantId)) {
+                || notificationRepository.existsByTypeAndRelatedIdAndIsReadFalse(type, variantId)) {
             return;
         }
-        String title = "Low stock: " + productName;
-        String body = "Stock is below " + lowStockThreshold
-                + " (currently " + currentStock + "). Please restock.";
-        notifyAdmins(NotificationType.STOCK_ALERT, title, body, variantId);
+        String title = currentStock <= 0 ? "Out of stock: " + productName : "Low stock: " + productName;
+        String body = currentStock <= 0 ? "This product variant is out of stock. Please restock."
+                : "Stock is below " + lowStockThreshold + " (currently " + currentStock + "). Please restock.";
+        notifyAdmins(type, title, body, variantId);
     }
 
     @Override

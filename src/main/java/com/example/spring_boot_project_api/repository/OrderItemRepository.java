@@ -17,6 +17,21 @@ import com.example.spring_boot_project_api.model.OrderItem;
 @Repository
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
+    @Query("""
+            select fp.fragranceFamily as fragranceFamily, sum(oi.quantity) as quantity
+            from OrderItem oi join oi.variant v join v.product p join p.fragranceProfile fp
+            where oi.order.user.id = :userId and oi.order.status <> :cancelled
+              and fp.fragranceFamily is not null and fp.fragranceFamily <> ''
+            group by fp.fragranceFamily order by sum(oi.quantity) desc
+            """)
+    List<UserFragrancePreference> findUserFragrancePreferences(
+            @Param("userId") Long userId, @Param("cancelled") OrderStatus cancelled);
+
+    interface UserFragrancePreference {
+        String getFragranceFamily();
+        Long getQuantity();
+    }
+
     @Query(value = """
             select oi.product_name as productName,
                    oi.brand as brand,

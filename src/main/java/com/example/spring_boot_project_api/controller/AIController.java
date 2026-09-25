@@ -20,14 +20,19 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
 import com.example.spring_boot_project_api.dto.request.ai.RenameConversationRequest;
 import com.example.spring_boot_project_api.dto.request.ai.ScentConciergeRequest;
+import com.example.spring_boot_project_api.dto.request.ai.FragranceProfileRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIChatResponse;
 import com.example.spring_boot_project_api.dto.response.ai.ScentConciergeResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIConversationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.AIMessageResponse;
+import com.example.spring_boot_project_api.dto.response.ai.CustomerFragranceProfileResponse;
+import com.example.spring_boot_project_api.dto.response.ai.SimilarPerfumeResponse;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.AIService;
 import com.example.spring_boot_project_api.service.ScentConciergeService;
+import com.example.spring_boot_project_api.service.CustomerFragranceProfileService;
+import com.example.spring_boot_project_api.service.SimilarPerfumeService;
 import com.example.spring_boot_project_api.util.SecurityUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,10 +45,15 @@ import jakarta.validation.Valid;
 public class AIController {
     private final AIService aiService;
     private final ScentConciergeService scentConciergeService;
+    private final CustomerFragranceProfileService fragranceProfileService;
+    private final SimilarPerfumeService similarPerfumeService;
 
-    public AIController(AIService aiService, ScentConciergeService scentConciergeService){
+    public AIController(AIService aiService, ScentConciergeService scentConciergeService,
+            CustomerFragranceProfileService fragranceProfileService, SimilarPerfumeService similarPerfumeService){
         this.aiService = aiService;
         this.scentConciergeService = scentConciergeService;
+        this.fragranceProfileService = fragranceProfileService;
+        this.similarPerfumeService = similarPerfumeService;
     }
 
     private Long currentUserId() {
@@ -101,6 +111,25 @@ public class AIController {
     public ResponseEntity<ScentConciergeResponse> scentConcierge(
             @Valid @RequestBody ScentConciergeRequest request){
         return ResponseEntity.ok(scentConciergeService.recommend(currentUserId(), request));
+    }
+
+    @Operation(summary = "Generate or retrieve the signed-in customer's fragrance profile")
+    @PostMapping("/fragrance-profile")
+    public ResponseEntity<CustomerFragranceProfileResponse> fragranceProfile() {
+        return ResponseEntity.ok(fragranceProfileService.getOrGenerate(currentUserId()));
+    }
+
+    @Operation(summary = "Update the signed-in customer's fragrance profile")
+    @PutMapping("/fragrance-profile")
+    public ResponseEntity<CustomerFragranceProfileResponse> updateFragranceProfile(
+            @Valid @RequestBody FragranceProfileRequest request) {
+        return ResponseEntity.ok(fragranceProfileService.update(currentUserId(), request));
+    }
+
+    @Operation(summary = "Find similar active perfumes from the product catalog")
+    @GetMapping("/perfumes/{productId}/similar")
+    public ResponseEntity<SimilarPerfumeResponse> similarPerfumes(@PathVariable Long productId) {
+        return ResponseEntity.ok(similarPerfumeService.findSimilar(productId));
     }
 
     //get all conversations of the authenticated user

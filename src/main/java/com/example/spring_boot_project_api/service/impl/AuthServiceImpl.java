@@ -9,6 +9,7 @@ import java.util.HexFormat;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +40,8 @@ import com.example.spring_boot_project_api.repository.PasswordResetTokenReposito
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.AuthService;
 import com.example.spring_boot_project_api.service.EmailService;
+import com.example.spring_boot_project_api.service.NotificationService;
+import com.example.spring_boot_project_api.enums.NotificationType;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -53,6 +56,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider tokenProvider;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final NotificationService notificationService;
 
     @Value("${app.otp.max-attempts:5}")
     private int otpMaxAttempts = 5;
@@ -65,11 +69,22 @@ public class AuthServiceImpl implements AuthService {
                            JwtTokenProvider tokenProvider,
                            PasswordEncoder passwordEncoder,
                            EmailService emailService) {
+        this(userRepository, passwordResetTokenRepository, tokenProvider, passwordEncoder, emailService, null);
+    }
+
+    @Autowired
+    public AuthServiceImpl(UserRepository userRepository,
+                           PasswordResetTokenRepository passwordResetTokenRepository,
+                           JwtTokenProvider tokenProvider,
+                           PasswordEncoder passwordEncoder,
+                           EmailService emailService,
+                           NotificationService notificationService) {
         this.userRepository = userRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.tokenProvider = tokenProvider;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -105,6 +120,10 @@ public class AuthServiceImpl implements AuthService {
         if (!Boolean.TRUE.equals(user.getIsActive())) {
             user.setIsActive(true);
             userRepository.save(user);
+            if (notificationService != null && user.getRole() == com.example.spring_boot_project_api.enums.Role.CUSTOMER) {
+                notificationService.notifyAdmins(NotificationType.NEW_CUSTOMER, "New customer registered",
+                        user.getName() + " verified a customer account.", user.getId());
+            }
         }
 
         return buildAuthResponse(user);
@@ -130,7 +149,13 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
 
-        verifyPassword(request.password(), user);
+        if (!passwordMatches(request.password(), user)) {
+            if (notificationService != null) {
+                notificationService.notifyAdmins(NotificationType.SUSPICIOUS_LOGIN, "Suspicious login attempt",
+                        "A sign-in attempt using " + user.getEmail() + " failed password verification.", user.getId());
+            }
+            throw new UnauthorizedException("Invalid email or password");
+        }
 
         if (Boolean.TRUE.equals(user.getIsDeleted())) {
             throw new UnauthorizedException("Account has been deleted");
@@ -165,6 +190,10 @@ public class AuthServiceImpl implements AuthService {
             user.setUserImageUrl(imageUrl.isEmpty() ? null : imageUrl);
         }
         userRepository.save(user);
+        if (notificationService != null) {
+            notificationService.notifyAdmins(NotificationType.ACCOUNT_CHANGE, "Account settings changed",
+                    "A customer updated their profile information.", user.getId());
+        }
         return UserMapper.toUserResponse(user);
     }
 
@@ -213,6 +242,10 @@ public class AuthServiceImpl implements AuthService {
 
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
+        if (notificationService != null) {
+            notificationService.notifyAdmins(NotificationType.PASSWORD_CHANGE, "Password changed",
+                    "A customer reset their account password.", user.getId());
+        }
     }
 
     @Override
@@ -228,6 +261,10 @@ public class AuthServiceImpl implements AuthService {
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
         passwordResetTokenRepository.deleteByUserId(user.getId());
+        if (notificationService != null) {
+            notificationService.notifyAdmins(NotificationType.PASSWORD_CHANGE, "Password changed",
+                    "A customer changed their account password.", user.getId());
+        }
     }
 
     @Override
@@ -267,6 +304,10 @@ public class AuthServiceImpl implements AuthService {
         consumeToken(token, user);
         user.setEmail(newEmail);
         userRepository.save(user);
+        if (notificationService != null) {
+            notificationService.notifyAdmins(NotificationType.ACCOUNT_CHANGE, "Account email changed",
+                    "A customer updated their account email address.", user.getId());
+        }
     }
 
     private void issueOtp(User user, OtpPurpose purpose, String context) {
