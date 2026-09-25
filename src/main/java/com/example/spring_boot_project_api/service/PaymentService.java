@@ -86,6 +86,15 @@ public interface PaymentService {
     boolean expirePayment(Long paymentId);
 
     /**
+     * Whether automatic Bakong verification is currently suspended (daily
+     * quota exhausted or the circuit breaker is open). While suspended the
+     * reconciliation must not expire/cancel payments based on a stored
+     * PENDING status, because no upstream confirmation was actually received —
+     * the customer may have paid and the shop simply cannot check.
+     */
+    boolean isBakongVerificationSuspended();
+
+    /**
      * Send the "Payment Received" Telegram notification for a payment that has
      * just become SUCCESSFUL, but only after the current transaction commits.
      * Used by the CASH-on-delivery flow, which settles its payment directly

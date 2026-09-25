@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.spring_boot_project_api.dto.request.payment.PaymentRequest;
 import com.example.spring_boot_project_api.dto.request.payment.PaymentStatusUpdateRequest;
 import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
+import com.example.spring_boot_project_api.enums.Role;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.UnauthorizedException;
 import com.example.spring_boot_project_api.service.PaymentService;
@@ -87,6 +88,23 @@ public class PaymentController {
     @GetMapping("/{id}/status")
     public ResponseEntity<PaymentResponse> getPaymentStatus(
             @PathVariable Long id) {
+        Long userId = SecurityUtils.currentUserId()
+                .orElseThrow(() ->
+                        new UnauthorizedException("Authentication required"));
+
+        PaymentResponse payment = paymentService.getPayment(id);
+
+        boolean isAdmin = SecurityUtils.currentUser()
+                .map(u -> u.getRole() == Role.ADMIN)
+                .orElse(false);
+        boolean isOwner = payment.getOrderUserId() != null
+                && userId.equals(payment.getOrderUserId());
+
+        if (!isAdmin && !isOwner) {
+            throw new ForbiddenException(
+                    "You don't have permission to view this payment");
+        }
+
         return ResponseEntity.ok(paymentService.getPaymentStatus(id));
     }
 

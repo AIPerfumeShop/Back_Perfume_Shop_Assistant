@@ -16,6 +16,7 @@ import com.example.spring_boot_project_api.config.BakongProperties;
 import com.example.spring_boot_project_api.dto.request.bakong.BakongRequest;
 import com.example.spring_boot_project_api.dto.request.bakong.CheckTransactionRequest;
 import com.example.spring_boot_project_api.dto.response.bakong.BakongResponse;
+import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.BakongException;
 import com.example.spring_boot_project_api.service.BakongService;
 import com.example.spring_boot_project_api.service.BakongTokenService;
@@ -83,11 +84,11 @@ public class BakongServiceImpl implements BakongService {
 
     @Override
     public byte[] getQRImage(KHQRData qr) {
-        try {
-            if (qr == null || qr.getQr() == null || qr.getQr().isBlank()) {
-                return "Invalid QR data".getBytes(StandardCharsets.UTF_8);
-            }
+        if (qr == null || qr.getQr() == null || qr.getQr().isBlank()) {
+            throw new BadRequestException("QR data is required");
+        }
 
+        try {
             QRCodeWriter qrCodeWriter = new QRCodeWriter();
 
             Map<EncodeHintType, Object> hints = new HashMap<>();
@@ -103,10 +104,10 @@ public class BakongServiceImpl implements BakongService {
 
             return pngOutputStream.toByteArray();
         } catch (WriterException ex) {
-            return "Error encoding QR data".getBytes(StandardCharsets.UTF_8);
+            throw new BadRequestException(
+                    "Could not encode the provided QR data", ex);
         } catch (Exception ex) {
-            return ("Unexpected error: " + ex.getMessage())
-                    .getBytes(StandardCharsets.UTF_8);
+            throw new BakongException("QR image generation failed", ex);
         }
     }
 

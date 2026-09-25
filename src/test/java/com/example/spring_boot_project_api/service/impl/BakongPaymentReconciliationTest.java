@@ -167,6 +167,27 @@ class BakongPaymentReconciliationTest {
         verify(orderService, never()).cancelOrderAdmin(anyLong(), anyString());
     }
 
+    @Test
+    void reconcile_defersExpiryWhileVerificationSuspended() {
+        Payment payment = pendingPayment(10L, 20);
+        PaymentResponse pending = new PaymentResponse();
+        pending.setStatus(PaymentStatus.PENDING);
+
+        when(bakongProperties.isConfigured()).thenReturn(true);
+        when(paymentRepository.findAllByStatusAndMd5IsNotNull(
+                PaymentStatus.PENDING)).thenReturn(List.of(payment));
+        when(paymentService.verifyBakongPayment(1L)).thenReturn(pending);
+        when(paymentService.isBakongVerificationSuspended()).thenReturn(true);
+
+        reconciliation.reconcile();
+
+        // Past the expiry threshold, but the circuit/budget is open so no
+        // fresh upstream confirmation was received: must NOT cancel the order.
+        assertEquals(PaymentStatus.PENDING, payment.getStatus());
+        verify(paymentService, never()).expirePayment(anyLong());
+        verify(orderService, never()).cancelOrderAdmin(anyLong(), anyString());
+    }
+
     private Payment pendingPayment(long orderId, long createdAtMinutesAgo) {
         Payment payment = new Payment();
         payment.setId(1L);

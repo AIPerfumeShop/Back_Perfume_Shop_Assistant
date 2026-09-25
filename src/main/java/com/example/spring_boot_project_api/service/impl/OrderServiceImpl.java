@@ -40,6 +40,7 @@ import com.example.spring_boot_project_api.repository.OrderRepository;
 import com.example.spring_boot_project_api.repository.OrderStatusHistoryRepository;
 import com.example.spring_boot_project_api.repository.PaymentRepository;
 import com.example.spring_boot_project_api.repository.ProductVariantRepository;
+import com.example.spring_boot_project_api.repository.SettingsRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.repository.specification.OrderSpecification;
 import com.example.spring_boot_project_api.service.OrderService;
@@ -71,6 +72,8 @@ public class OrderServiceImpl implements OrderService {
     private final OrderMapper orderMapper;
     private final PaymentService paymentService;
     private final NotificationService notificationService;
+    private final SettingsRepository settingsRepository;
+    private static final String KHQR_ENABLED_SETTING = "payment_khqr";
 
     public OrderServiceImpl(
             OrderRepository orderRepository,
@@ -80,7 +83,8 @@ public class OrderServiceImpl implements OrderService {
             OrderStatusHistoryRepository orderStatusHistoryRepository,
             OrderMapper orderMapper,
             PaymentService paymentService,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            SettingsRepository settingsRepository) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.productVariantRepository = productVariantRepository;
@@ -89,6 +93,7 @@ public class OrderServiceImpl implements OrderService {
         this.orderMapper = orderMapper;
         this.paymentService = paymentService;
         this.notificationService = notificationService;
+        this.settingsRepository = settingsRepository;
     }
 
     //Create order
@@ -321,6 +326,14 @@ public class OrderServiceImpl implements OrderService {
                     "Cash on delivery is only available in Phnom Penh");
         }
 
+        //KHQR (Bakong) is an admin-toggled payment method; the backend must
+        //not accept KHQR when the toggle is off, even if a client bypasses
+        //the storefront gate. Checked before any order is persisted.
+        if (isKHQR(request.getPaymentMethod()) && !isKhqrEnabled()) {
+            throw new InvalidOrderException(
+                    "KHQR payments are currently disabled");
+        }
+
         //Idempotency guard: if the same user just placed an identical
         //checkout, return the existing pending order instead of creating
         //a duplicate order + payment (double-tap protection).
@@ -351,7 +364,7 @@ public class OrderServiceImpl implements OrderService {
 
         notificationService.recordOrderPlaced(savedOrder);
 
-        // KHQR payments go through the Bakong gateway: generate a QR code and
+        //KHQR (Bakong)'s QR goes through the Bakong gateway: generate a QR code and
         // leave both order and payment PENDING until the customer scans & pays.
         if (isKHQR(request.getPaymentMethod())) {
             Payment payment =
@@ -458,6 +471,16 @@ public class OrderServiceImpl implements OrderService {
         if (paymentMethod == null) return false;
         String normalized = paymentMethod.trim().toUpperCase();
         return "KHQR".equals(normalized);
+    }
+
+    private boolean isKhqrEnabled() {
+        return settingsRepository.findBySettingKey(KHQR_ENABLED_SETTING)
+                .map(settings -> {
+                    String value = settings.getValue();
+                    return value == null || value.isBlank()
+                            || !"false".equalsIgnoreCase(value.trim());
+                })
+                .orElse(true);
     }
 
     private boolean isPhnomPenh(String city) {

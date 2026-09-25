@@ -31,6 +31,7 @@ import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.BakongException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
 import com.example.spring_boot_project_api.mapper.PaymentMapper;
+import com.example.spring_boot_project_api.model.AppSetting;
 import com.example.spring_boot_project_api.model.Order;
 import com.example.spring_boot_project_api.model.Payment;
 import com.example.spring_boot_project_api.repository.OrderRepository;
@@ -78,7 +79,7 @@ class PaymentServiceImplTest {
                 paymentRepository, orderRepository, paymentMapper,
                 bakongService, telegramService, bakongProperties,
                 notificationService, appSettingRepository,
-                90, 180_000L, 10);
+                90, 180_000L, 10, 15L);
     }
 
     private Payment newPayment(Order order, PaymentStatus status) {
@@ -350,6 +351,58 @@ class PaymentServiceImplTest {
 
         assertEquals(PaymentStatus.PENDING, result.getStatus());
         assertEquals(OrderStatus.PENDING, order.getStatus());
+    }
+
+    @Test
+    void createPayment_KHQR_generatesAndAttachesQrAndMd5() {
+        Order order = newOrder();
+        KHQRData data = new KHQRData();
+        data.setQr("00020101021XKHQR");
+        data.setMd5("abc123");
+        KHQRStatus status = new KHQRStatus();
+        status.setCode(0);
+        KHQRResponse<KHQRData> qrResponse = new KHQRResponse<>();
+        qrResponse.setKHQRStatus(status);
+        qrResponse.setData(data);
+
+        PaymentRequest request = new PaymentRequest();
+        request.setOrderId(10L);
+        request.setPaymentMethod("KHQR");
+
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(bakongService.generateQR(any())).thenReturn(qrResponse);
+        when(bakongProperties.getMerchantName()).thenReturn("John Smith");
+        when(bakongProperties.getMerchantCity()).thenReturn("PHNOM PENH");
+        when(bakongProperties.getMerchantId()).thenReturn("123456");
+        when(bakongProperties.getAcquiringBank()).thenReturn("Dev Bank");
+        when(bakongProperties.getStoreLabel()).thenReturn("AI Perfume Shop");
+        when(bakongProperties.getTerminalLabel()).thenReturn("TERMINAL1");
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paymentMapper.toResponse(any(Payment.class)))
+                .thenAnswer(inv -> toResponse(inv.getArgument(0)));
+
+        PaymentResponse response = paymentService.createPayment(request);
+
+        assertNotNull(response);
+        assertEquals(PaymentMethod.KHQR, response.getPaymentMethod());
+        assertEquals("00020101021XKHQR", response.getQrText());
+        assertEquals("abc123", response.getMd5());
+    }
+
+    @Test
+    void isBakongVerificationSuspended_reflectsCircuitSetting() {
+        AppSetting circuit = new AppSetting();
+        circuit.setSettingKey("bakong.daily.suspend-until");
+        circuit.setSettingValue(java.time.LocalDate.now().toString());
+
+        when(appSettingRepository.findBySettingKey("bakong.daily.suspend-until"))
+                .thenReturn(Optional.of(circuit));
+
+        assertTrue(paymentService.isBakongVerificationSuspended());
+
+        when(appSettingRepository.findBySettingKey("bakong.daily.suspend-until"))
+                .thenReturn(Optional.empty());
+        assertFalse(paymentService.isBakongVerificationSuspended());
     }
 
     private PaymentResponse toResponse(Payment payment) {

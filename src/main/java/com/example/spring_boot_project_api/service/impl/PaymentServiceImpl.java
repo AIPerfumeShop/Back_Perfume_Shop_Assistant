@@ -61,12 +61,13 @@ public class PaymentServiceImpl implements PaymentService {
     private final int maxDailyChecks;
     private final long minCheckIntervalMs;
     private final int forcedVerifyReserve;
+    private final long qrExpiryMinutes;
 
-    // Bakong limits check_transaction_by_md5 to 100 requests/day. The frontend
-    // auto-polls the verify endpoint every few seconds, so without guarding the
-    // upstream call itself the budget is exhausted by a single pending order.
-    // Daily usage and the circuit-breaker are persisted in tb_app_settings so
-    // an application restart cannot reset the budget mid-day.
+    // Bakong limits check_transaction_by_md5 to 100 requests/day. Without
+    // guarding the upstream call, a burst of pending orders or the automatic
+    // reconciliation would exhaust the budget in minutes. Daily usage and the
+    // circuit-breaker are persisted in tb_app_settings so an application
+    // restart cannot reset the budget mid-day.
     private static final String BAKONG_DAILY_CHECKS_PREFIX = "bakong.daily.checks.";
     private static final String BAKONG_DAILY_SUSPEND_KEY = "bakong.daily.suspend-until";
 
@@ -85,7 +86,9 @@ public class PaymentServiceImpl implements PaymentService {
                               @Value("${payment.bakong.min-check-interval-ms:180000}")
                               long minCheckIntervalMs,
                               @Value("${payment.bakong.forced-verify-reserve:10}")
-                              int forcedVerifyReserve) {
+                              int forcedVerifyReserve,
+                              @Value("${payment.bakong.payment-expiry-minutes:15}")
+                              long qrExpiryMinutes) {
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
         this.paymentMapper = paymentMapper;
@@ -97,6 +100,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.maxDailyChecks = maxDailyChecks;
         this.minCheckIntervalMs = minCheckIntervalMs;
         this.forcedVerifyReserve = Math.max(0, Math.min(forcedVerifyReserve, maxDailyChecks));
+        this.qrExpiryMinutes = Math.max(1, qrExpiryMinutes);
     }
 
     @Override
@@ -125,6 +129,10 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(order.getTotalAmount());
         payment.setStatus(PaymentStatus.PENDING);
         payment.setTransactionId(UUID.randomUUID().toString());
+
+        if (method == PaymentMethod.KHQR) {
+            attachKhqrData(payment, order);
+        }
 
         return paymentMapper.toResponse(paymentRepository.save(payment));
     }
@@ -265,6 +273,12 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setStatus(PaymentStatus.PENDING);
         payment.setTransactionId(UUID.randomUUID().toString());
 
+        attachKhqrData(payment, order);
+
+        return paymentRepository.save(payment);
+    }
+
+    private void attachKhqrData(Payment payment, Order order) {
         KHQRResponse<KHQRData> response = bakongService.generateQR(
                 new BakongRequest(
                         null,
@@ -273,11 +287,12 @@ public class PaymentServiceImpl implements PaymentService {
                         bakongProperties.getMerchantCity(),
                         bakongProperties.getMerchantId(),
                         bakongProperties.getAcquiringBank(),
-                        null, null,
+                        null, (int) qrExpiryMinutes,
                         String.valueOf(order.getId()),
                         bakongProperties.getStoreLabel(),
                         bakongProperties.getTerminalLabel(),
-                        null, null, null, null, null));
+                        bakongProperties.getMobileNumber(),
+                        null, null, null, null));
 
         if (response == null
                 || response.getKHQRStatus() == null
@@ -295,8 +310,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         payment.setMd5(response.getData().getMd5());
         payment.setQrText(response.getData().getQr());
-
-        return paymentRepository.save(payment);
     }
 
     @Override
@@ -444,6 +457,11 @@ public class PaymentServiceImpl implements PaymentService {
         return appSettingRepository.findBySettingKey(BAKONG_DAILY_SUSPEND_KEY)
                 .map(s -> LocalDate.now().equals(parseDateOrNull(s.getSettingValue())))
                 .orElse(false);
+    }
+
+    @Override
+    public boolean isBakongVerificationSuspended() {
+        return isDailyCircuitOpen();
     }
 
     private void suspendBakongChecks() {

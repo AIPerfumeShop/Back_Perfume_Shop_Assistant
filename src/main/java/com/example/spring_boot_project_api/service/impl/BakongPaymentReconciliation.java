@@ -130,6 +130,18 @@ public class BakongPaymentReconciliation {
                     continue;
                 }
 
+                // While the circuit is open or the daily budget is exhausted,
+                // verifyBakongPayment returns the stored PENDING status without
+                // a fresh upstream confirmation. Expiring on that alone could
+                // cancel an order the customer actually paid — defer until the
+                // check path is healthy again.
+                if (paymentService.isBakongVerificationSuspended()) {
+                    log.warn("Bakong verification suspended; deferring expiry "
+                            + "decision for payment {} until the next live "
+                            + "confirmation", payment.getId());
+                    continue;
+                }
+
                 if (isExpired(payment)) {
                     expire(payment);
                 }

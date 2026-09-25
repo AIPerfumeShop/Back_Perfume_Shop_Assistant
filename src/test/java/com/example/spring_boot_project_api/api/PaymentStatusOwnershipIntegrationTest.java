@@ -1,5 +1,9 @@
 package com.example.spring_boot_project_api.api;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -18,19 +22,17 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.enums.OtpPurpose;
 import com.example.spring_boot_project_api.service.EmailService;
+import com.example.spring_boot_project_api.service.PaymentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
 
 @SpringBootTest
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 @Transactional
-class PaymentSecurityIntegrationTest {
+class PaymentStatusOwnershipIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -40,12 +42,15 @@ class PaymentSecurityIntegrationTest {
     @MockitoBean
     private EmailService emailService;
 
+    @MockitoBean
+    private PaymentService paymentService;
+
     private String email;
 
     @BeforeEach
     void setUp() {
         Mockito.reset(emailService);
-        email = "paysec" + System.nanoTime() + "@it.test";
+        email = "payowner" + System.nanoTime() + "@it.test";
     }
 
     @AfterEach
@@ -58,7 +63,7 @@ class PaymentSecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "name": "Pay Security",
+                                  "name": "Pay Owner",
                                   "email": "%s",
                                   "password": "password123",
                                   "phone": "0123456789"
@@ -79,72 +84,47 @@ class PaymentSecurityIntegrationTest {
         return objectMapper.readTree(token).get("token").asText();
     }
 
-    @Test
-    void paymentHistoryMe_customerAuthenticated_isAllowed() throws Exception {
-        String jwt = registerAndVerify(email);
-
-        mockMvc.perform(get("/api/payments/history/me")
+    private long fetchUserId(String jwt) throws Exception {
+        String body = mockMvc.perform(get("/api/auth/me")
                         .header("Authorization", "Bearer " + jwt))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body).get("id").asLong();
     }
 
     @Test
-    void paymentHistoryForAnyUser_customer_isForbidden() throws Exception {
+    void paymentStatus_anonymous_isUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/payments/1/status"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void paymentStatus_customerNonOwner_isForbidden() throws Exception {
         String jwt = registerAndVerify(email);
 
-        mockMvc.perform(get("/api/payments/history/user/1")
+        PaymentResponse otherUsersPayment = new PaymentResponse();
+        otherUsersPayment.setId(1L);
+        otherUsersPayment.setOrderUserId(987654L);
+        when(paymentService.getPayment(1L)).thenReturn(otherUsersPayment);
+
+        mockMvc.perform(get("/api/payments/1/status")
                         .header("Authorization", "Bearer " + jwt))
                 .andExpect(status().isForbidden());
     }
 
     @Test
-    void paymentHistoryForAnyUser_anonymous_isUnauthorized() throws Exception {
-        mockMvc.perform(get("/api/payments/history/user/1"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void paymentVerify_anonymous_isUnauthorized() throws Exception {
-        mockMvc.perform(post("/api/payments/999999/verify"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void paymentVerify_customerAuthenticated_reachesService() throws Exception {
+    void paymentStatus_customerOwner_isAllowed() throws Exception {
         String jwt = registerAndVerify(email);
+        long userId = fetchUserId(jwt);
 
-        mockMvc.perform(post("/api/payments/999999/verify")
-                        .header("Authorization", "Bearer " + jwt))
-                .andExpect(status().isNotFound());
-    }
+        PaymentResponse ownPayment = new PaymentResponse();
+        ownPayment.setId(1L);
+        ownPayment.setOrderUserId(userId);
+        when(paymentService.getPayment(1L)).thenReturn(ownPayment);
+        when(paymentService.getPaymentStatus(1L)).thenReturn(ownPayment);
 
-    @Test
-    void paymentHistoryOrder_customerAuthenticated_isAllowed() throws Exception {
-        String jwt = registerAndVerify(email);
-
-        mockMvc.perform(get("/api/payments/history/order/999999")
+        mockMvc.perform(get("/api/payments/1/status")
                         .header("Authorization", "Bearer " + jwt))
                 .andExpect(status().isOk());
-    }
-
-    @Test
-    void bakongCheckTransaction_anonymous_isUnauthorized() throws Exception {
-        mockMvc.perform(post("/api/v1/bakong/check-transaction")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"md5\":\"abc\"}"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void bakongCheckTransaction_customer_isForbidden() throws Exception {
-        String jwt = registerAndVerify(email);
-
-        // The direct MD5 check spends the same daily upstream quota as the
-        // reconciliation path, so customers must not be able to invoke it.
-        mockMvc.perform(post("/api/v1/bakong/check-transaction")
-                        .header("Authorization", "Bearer " + jwt)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"md5\":\"abc\"}"))
-                .andExpect(status().isForbidden());
     }
 }

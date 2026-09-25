@@ -61,6 +61,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/payments/history/order/*").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/payments/history/me").authenticated()
                 .requestMatchers("/api/payments/**").hasRole("ADMIN")
+                // Direct Bakong MD5 check spends the same daily upstream quota
+                // (100 checks/day) as the reconciliation path, so it must not be
+                // reachable by arbitrary authenticated users.
+                .requestMatchers(HttpMethod.POST, "/api/v1/bakong/check-transaction").hasRole("ADMIN")
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/products/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/products/**").hasRole("ADMIN")
@@ -90,6 +94,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/products/**").permitAll()
                 .requestMatchers("/api/upload/**").authenticated()
                 .requestMatchers("/api/site-content").permitAll()
+                .requestMatchers("/api/checkout/config").permitAll()
                 .requestMatchers("/api/gift-finder/**").permitAll()
                 .requestMatchers("/api/orders/**").authenticated()
                 .requestMatchers("/api/cs/analytics").hasRole("ADMIN")
