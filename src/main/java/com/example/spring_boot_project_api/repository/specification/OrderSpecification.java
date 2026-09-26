@@ -1,13 +1,17 @@
 package com.example.spring_boot_project_api.repository.specification;
 
 import java.time.LocalTime;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 
 import org.springframework.data.jpa.domain.Specification;
 
 import com.example.spring_boot_project_api.dto.request.order.OrderFilterRequest;
 import com.example.spring_boot_project_api.model.Order;
+import com.example.spring_boot_project_api.model.Payment;
 
 public class OrderSpecification {
 
@@ -21,6 +25,23 @@ public class OrderSpecification {
             if (filter.getStatus() != null) {
                 predicate = cb.and(predicate,
                         cb.equal(root.get("status"), filter.getStatus()));
+            }
+
+            if (filter.getPaymentStatus() != null) {
+                Subquery<Long> matchingPayment = query.subquery(Long.class);
+                Root<Payment> payment = matchingPayment.from(Payment.class);
+                Subquery<LocalDateTime> latestPaymentTime = matchingPayment.subquery(LocalDateTime.class);
+                Root<Payment> latestPayment = latestPaymentTime.from(Payment.class);
+                latestPaymentTime.select(cb.greatest(latestPayment.<LocalDateTime>get("createdAt")));
+                latestPaymentTime.where(cb.equal(
+                        latestPayment.get("order").get("id"),
+                        payment.get("order").get("id")));
+                matchingPayment.select(payment.<Long>get("id"));
+                matchingPayment.where(
+                        cb.equal(payment.get("order").get("id"), root.get("id")),
+                        cb.equal(payment.get("status"), filter.getPaymentStatus()),
+                        cb.equal(payment.get("createdAt"), latestPaymentTime));
+                predicate = cb.and(predicate, cb.exists(matchingPayment));
             }
 
             if (filter.getFromDate() != null) {

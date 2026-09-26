@@ -58,7 +58,7 @@ public class BakongPaymentReconciliation {
                                        DataSource dataSource,
                                        @Value("${payment.bakong.payment-expiry-minutes:15}")
                                        long expiryMinutes,
-@Value("${payment.bakong.min-check-interval-ms:180000}")
+                                       @Value("${payment.bakong.min-check-interval-ms:60000}")
                                         long minCheckIntervalMs) {
         this.paymentRepository = paymentRepository;
         this.paymentService = paymentService;

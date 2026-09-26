@@ -49,8 +49,8 @@ public class StatisticsServiceImpl implements StatisticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end, OrderStatus.CANCELLED);
-        long totalOrders = orderRepository.countByCreatedAtBetween(start, end, OrderStatus.CANCELLED);
+        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end);
+        long totalOrders = orderRepository.countSuccessfulByCreatedAtBetween(start, end);
         ReviewRatingStat rating = reviewRepository.findRatingSummary();
 
         ProductStatisticsResponse response = new ProductStatisticsResponse();

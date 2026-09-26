@@ -123,7 +123,6 @@ public class CustomerCareServiceImpl implements CustomerCareService {
     private enum Intent {
         ORDER_STATUS,
         CANCEL_ORDER,
-        REFUND,
         PAYMENT,
         SHIPPING,
         ACCOUNT,
@@ -176,11 +175,6 @@ public class CustomerCareServiceImpl implements CustomerCareService {
                     canned = "I can help cancel an order! 💗 Could you share your order number? It looks like ORD- followed by a few digits.";
                 }
             }
-            case REFUND -> {
-                canned = "I'm sorry to hear that! 💕 We accept returns and refunds for eligible orders, and I can start the process for you. "
-                        + "For a damaged or incorrect item, I'll connect you straight to a customer-care specialist.";
-                handoff = true;
-            }
             case PAYMENT -> {
                 canned = "I can help with payments! For a failed or unclear payment, please check the order status in My Orders, "
                         + "and if it still looks wrong I'll connect you to a specialist.";
@@ -201,7 +195,7 @@ public class CustomerCareServiceImpl implements CustomerCareService {
                 handoff = true;
             }
             case PRODUCT -> {
-                canned = "I specialise in orders, payments, delivery, returns and account help. 💕 For finding your perfect scent, "
+                canned = "I specialise in orders, payments, delivery and account help. 💕 For finding your perfect scent, "
                         + "Blossom AI is the expert — would you like me to take you there?";
                 redirect = true;
             }
@@ -750,8 +744,8 @@ public class CustomerCareServiceImpl implements CustomerCareService {
         if (containsAny(t, "cancel")) {
             return Intent.CANCEL_ORDER;
         }
-        if (containsAny(t, "refund", "return", "damaged", "broken", "not received", "defective")) {
-            return Intent.REFUND;
+        if (containsAny(t, "damaged", "broken", "not received", "defective", "wrong item")) {
+            return Intent.COMPLAINT;
         }
         if (containsAny(t, "order", "ord-", "track", "where is my", "my package", "my parcel", "status of")) {
             return Intent.ORDER_STATUS;
@@ -805,7 +799,7 @@ public class CustomerCareServiceImpl implements CustomerCareService {
                 "scam", "fraud", "charged twice", "unauthorized charge",
                 "broken", "damaged", "defective", "wrong item", "leaking",
                 "not received", "never arrived", "missing package", "lost package",
-                "allergic reaction", "skin reaction", "refund", "complaint",
+                "allergic reaction", "skin reaction", "complaint",
                 "unsafe", "dangerous")) {
             return TicketPriority.URGENT;
         }

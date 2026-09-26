@@ -29,6 +29,17 @@ public interface AIRecommendationRepository extends JpaRepository<AIRecommendati
     List<AIRecommendation> findByConversationId(Long conversationId);
 
     @Query("""
+            select r from AIRecommendation r
+            where r.conversation.id = :conversationId
+              and r.createdAt = (
+                  select max(latest.createdAt) from AIRecommendation latest
+                  where latest.conversation.id = :conversationId
+              )
+            order by r.position asc, r.id asc
+            """)
+    List<AIRecommendation> findLatestBatchByConversationId(@Param("conversationId") Long conversationId);
+
+    @Query("""
             SELECT r.product.id AS productId,
                    r.product.name AS productName,
                    r.product.brand.name AS brand,

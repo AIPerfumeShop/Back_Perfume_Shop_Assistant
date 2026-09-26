@@ -63,6 +63,9 @@ public interface PaymentService {
      */
     PaymentResponse verifyBakongPayment(Long paymentId, boolean force);
 
+    /** Force a KHQR status check in an independent transaction before cancellation. */
+    PaymentResponse verifyBakongPaymentForCancellation(Long paymentId);
+
     /**
      * List the payment history for a given order.
      */

@@ -166,8 +166,13 @@ public class AIAnalyticsServiceImpl implements AIAnalyticsService {
         LocalDateTime end = resolveEnd(filter);
 
         AIUsageAnalyticsResponse response = new AIUsageAnalyticsResponse();
-        response.setTotalConversations(conversationRepository.countByCreatedAtBetween(start, end));
-        response.setTotalMessages(messageRepository.countByCreatedAtBetween(start, end));
+        long totalConversations = conversationRepository.countByCreatedAtBetween(start, end);
+        long totalMessages = messageRepository.countByCreatedAtBetween(start, end);
+        response.setTotalConversations(totalConversations);
+        response.setTotalMessages(totalMessages);
+        response.setAverageMessagesPerConversation(totalConversations > 0
+                ? Math.round((totalMessages * 100.0) / totalConversations) / 100.0
+                : 0.0);
         response.setTotalRecommendations(recommendationRepository.countRecommendationsBetween(start, end));
         response.setTotalClicks(clickRepository.countClicksBetween(start, end));
         response.setUniqueUsers(clickRepository.countDistinctUsersBetween(start, end));

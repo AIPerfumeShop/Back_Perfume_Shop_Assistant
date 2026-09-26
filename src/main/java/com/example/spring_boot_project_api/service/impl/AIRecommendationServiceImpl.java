@@ -1,6 +1,7 @@
 package com.example.spring_boot_project_api.service.impl;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -22,6 +23,7 @@ import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationClick
 import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationResponse;
 import com.example.spring_boot_project_api.dto.response.ai.CustomerFragranceProfileResponse;
 import com.example.spring_boot_project_api.enums.OrderStatus;
+import com.example.spring_boot_project_api.enums.MessageSender;
 import com.example.spring_boot_project_api.exception.BadRequestException;
 import com.example.spring_boot_project_api.exception.ForbiddenException;
 import com.example.spring_boot_project_api.exception.ResourceNotFoundException;
@@ -109,8 +111,14 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         if (conversation != null && !hasExplicitFilters(req)) {
             List<AIMessage> history = messageRepository
                     .findByConversationIdOrderByCreatedAtAsc(conversation.getId());
-            AISearchPreferences preferences =
-                    openRouterService.extractSearchPreferences(history);
+            AIMessage latestCustomerMessage = history.stream()
+                    .filter(message -> message.getSender() == MessageSender.USER)
+                    .reduce((first, second) -> second)
+                    .orElse(null);
+            AISearchPreferences preferences = latestCustomerMessage == null
+                    || !isRecommendationSearchMessage(latestCustomerMessage.getMessage())
+                    ? AISearchPreferences.empty()
+                    : openRouterService.extractSearchPreferences(List.of(latestCustomerMessage));
             AIRecommendationRequest merged = mergePreferences(req, preferences);
             if (hasAnyPreference(preferences)) {
                 source = merged;
@@ -179,6 +187,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         }
 
         if (conversation != null) {
+            LocalDateTime batchCreatedAt = LocalDateTime.now();
             List<AIRecommendation> saved = recommendationRepository.saveAll(
                     finalProducts.stream()
                             .map(product -> {
@@ -187,6 +196,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
                                 entity.setProduct(product);
                                 entity.setReason(responses.get(finalProducts.indexOf(product)).getReason());
                                 entity.setPosition(finalProducts.indexOf(product) + 1);
+                                entity.setCreatedAt(batchCreatedAt);
                                 return entity;
                             })
                             .toList());
@@ -196,6 +206,37 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         }
 
         return responses;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AIRecommendationResponse> getLatestConversationRecommendations(Long userId, Long conversationId) {
+        if (conversationId == null) {
+            throw new BadRequestException("Conversation ID is required");
+        }
+        AIConversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("AI conversation not found"));
+        if (conversation.getUser() == null || !userId.equals(conversation.getUser().getId())) {
+            throw new ForbiddenException("You cannot view recommendations from this conversation");
+        }
+
+        List<AIRecommendation> latest = recommendationRepository
+                .findLatestBatchByConversationId(conversationId);
+        if (latest.isEmpty()) return List.of();
+
+        List<Long> productIds = latest.stream()
+                .map(item -> item.getProduct().getId())
+                .toList();
+        Map<Long, Double> ratings = productRepository.findRatingStats(productIds).stream()
+                .collect(Collectors.toMap(ProductRatingStat::getProductId, ProductRatingStat::getAvgRate));
+
+        return latest.stream().map(item -> {
+            Product product = item.getProduct();
+            AIRecommendationResponse response = toResponse(product,
+                    ratings.get(product.getId()), item.getReason(), item.getPosition() == null ? 0 : item.getPosition());
+            response.setRecommendationId(item.getId());
+            return response;
+        }).toList();
     }
 
     private AIRecommendationRequest mergeSavedPreferences(AIRecommendationRequest base, AIChatPreferences preferences) {
@@ -212,18 +253,6 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         merged.setMaxPrice(base.getMaxPrice());
         merged.setMinRate(base.getMinRate());
         merged.setPreferences(preferences);
-        if (merged.getBrand() == null && preferences.getBrands() != null && preferences.getBrands().size() == 1) {
-            merged.setBrand(preferences.getBrands().get(0));
-        }
-        if (merged.getGender() == null && preferences.getGender() != null) {
-            try { merged.setGender(com.example.spring_boot_project_api.enums.Gender.valueOf(
-                    preferences.getGender().trim().toUpperCase(Locale.ROOT))); }
-            catch (IllegalArgumentException ignored) { /* ranking still uses other saved preferences */ }
-        }
-        if (merged.getFragranceFamily() == null && preferences.getFamilies() != null
-                && preferences.getFamilies().size() == 1) {
-            merged.setFragranceFamily(preferences.getFamilies().get(0));
-        }
         if (merged.getMinPrice() == null) merged.setMinPrice(preferences.getPriceMin());
         if (merged.getMaxPrice() == null) merged.setMaxPrice(preferences.getPriceMax());
         return merged;
@@ -403,6 +432,17 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
                 || preferences.maxPrice() != null;
     }
 
+    private boolean isRecommendationSearchMessage(String message) {
+        if (message == null || message.isBlank()) return false;
+        String text = message.toLowerCase(Locale.ROOT);
+        return text.contains("recommend") || text.contains("suggest")
+                || text.contains("find my perfume") || text.contains("find me a perfume")
+                || text.contains("perfume for") || text.contains("fragrance for")
+                || text.contains("looking for a perfume") || text.contains("want a perfume")
+                || text.contains("something floral") || text.contains("something fresh")
+                || text.contains("something sweet") || text.contains("within my budget");
+    }
+
     private AIRecommendationRequest mergePreferences(
             AIRecommendationRequest req, AISearchPreferences preferences) {
         AIRecommendationRequest merged = new AIRecommendationRequest();
@@ -429,7 +469,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         filter.setFragranceFamily(request.getFragranceFamily());
         filter.setMinPrice(request.getMinPrice());
         filter.setMaxPrice(request.getMaxPrice());
-        filter.setMinRate(request.getMinRate() != null ? request.getMinRate() : 4);
+        filter.setMinRate(request.getMinRate());
         filter.setInStock(Boolean.TRUE);
         filter.setPage(0);
         filter.setSize(limit);

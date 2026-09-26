@@ -34,6 +34,7 @@ import com.example.spring_boot_project_api.repository.SettingsRepository;
 import com.example.spring_boot_project_api.repository.UserRepository;
 import com.example.spring_boot_project_api.service.NotificationService;
 import com.example.spring_boot_project_api.service.PaymentService;
+import com.example.spring_boot_project_api.service.TelegramService;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
@@ -65,6 +66,9 @@ class OrderServiceImplTest {
     @Mock
     private SettingsRepository settingsRepository;
 
+    @Mock
+    private TelegramService telegramService;
+
     private OrderServiceImpl orderService;
 
     @BeforeEach
@@ -72,7 +76,7 @@ class OrderServiceImplTest {
         orderService = new OrderServiceImpl(
                 orderRepository, userRepository, productVariantRepository,
                 paymentRepository, orderStatusHistoryRepository, orderMapper,
-                paymentService, notificationService, settingsRepository);
+                paymentService, notificationService, settingsRepository, telegramService);
     }
 
     private CheckoutRequest khqrRequest() {

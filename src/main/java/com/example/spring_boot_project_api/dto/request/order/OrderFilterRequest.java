@@ -8,6 +8,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import com.example.spring_boot_project_api.enums.OrderStatus;
+import com.example.spring_boot_project_api.enums.PaymentStatus;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -23,6 +24,7 @@ public class OrderFilterRequest {
             "id", "totalAmount", "status", "createdAt", "updatedAt");
 
     private OrderStatus status;
+    private PaymentStatus paymentStatus;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate fromDate;

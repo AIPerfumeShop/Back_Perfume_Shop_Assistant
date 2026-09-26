@@ -41,6 +41,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
                    coalesce(sum(o.totalAmount), 0) as totalSpent
             from Order o
             where o.user.id in :userIds
+              and exists (select p.id from Payment p where p.order = o and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             group by o.user.id
             """)
     List<UserOrderStat> countOrdersByUserIds(@Param("userIds") Collection<Long> userIds);
@@ -53,23 +54,27 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
 
     long countByStatus(OrderStatus status);
 
-    @Query("select coalesce(sum(o.totalAmount), 0) from Order o " +
-            "where o.status <> :cancelled")
-    BigDecimal sumTotalAmount(@Param("cancelled") OrderStatus cancelled);
+    @Query("""
+            select coalesce(sum(o.totalAmount), 0) from Order o
+            where exists (select p.id from Payment p where p.order = o and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
+            """)
+    BigDecimal sumTotalAmount();
 
-    @Query("select coalesce(sum(o.totalAmount), 0) from Order o " +
-            "where o.createdAt >= :start and o.createdAt < :end " +
-            "and o.status <> :cancelled")
+    @Query("""
+            select coalesce(sum(o.totalAmount), 0) from Order o
+            where o.createdAt >= :start and o.createdAt < :end
+              and exists (select p.id from Payment p where p.order = o and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
+            """)
     BigDecimal sumTotalAmountBetween(@Param("start") LocalDateTime start,
-                                     @Param("end") LocalDateTime end,
-                                     @Param("cancelled") OrderStatus cancelled);
+                                     @Param("end") LocalDateTime end);
 
-    @Query("select count(o) from Order o " +
-            "where o.createdAt >= :start and o.createdAt < :end " +
-            "and o.status <> :cancelled")
-    long countByCreatedAtBetween(@Param("start") LocalDateTime start,
-                                 @Param("end") LocalDateTime end,
-                                 @Param("cancelled") OrderStatus cancelled);
+    @Query("""
+            select count(distinct p.order.id) from Payment p
+            where p.order.createdAt >= :start and p.order.createdAt < :end
+              and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL
+            """)
+    long countSuccessfulByCreatedAtBetween(@Param("start") LocalDateTime start,
+                                           @Param("end") LocalDateTime end);
 
     @Query("""
             select o.status as status,
@@ -90,6 +95,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
             join o.user u
             where o.createdAt >= :start and o.createdAt < :end
               and o.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = o and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             group by u.id, u.name, u.email
             order by sum(o.totalAmount) desc
             """)
@@ -103,6 +109,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
             from Order o
             where o.createdAt >= :start and o.createdAt < :end
               and o.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = o and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             """)
     List<Long> findDistinctCustomerIdsBetween(@Param("start") LocalDateTime start,
                                               @Param("end") LocalDateTime end,
@@ -114,6 +121,7 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
             from Order o
             where o.createdAt >= :start and o.createdAt < :end
               and o.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = o and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             group by o.user.id
             """)
     List<CustomerOrderCountStat> findCustomerOrderCountsBetween(

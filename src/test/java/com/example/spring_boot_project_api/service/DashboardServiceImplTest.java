@@ -94,7 +94,7 @@ class DashboardServiceImplTest {
         when(userRepository.countByRole(Role.CUSTOMER)).thenReturn(10L);
         when(productRepository.count()).thenReturn(25L);
         when(orderRepository.count()).thenReturn(3L);
-        when(orderRepository.sumTotalAmount(OrderStatus.CANCELLED)).thenReturn(new BigDecimal("299.50"));
+        when(orderRepository.sumTotalAmount()).thenReturn(new BigDecimal("299.50"));
         when(orderRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of(order));
         when(orderRepository.countByStatus(OrderStatus.PENDING)).thenReturn(1L);
         when(orderRepository.countByStatus(OrderStatus.DELIVERED)).thenReturn(2L);
@@ -135,7 +135,7 @@ class DashboardServiceImplTest {
         when(userRepository.countByRole(Role.CUSTOMER)).thenReturn(0L);
         when(productRepository.count()).thenReturn(0L);
         when(orderRepository.count()).thenReturn(0L);
-        when(orderRepository.sumTotalAmount(OrderStatus.CANCELLED)).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.sumTotalAmount()).thenReturn(BigDecimal.ZERO);
         when(orderRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of(order));
         when(orderItemRepository.findTop5BestSellers()).thenReturn(List.of());
 

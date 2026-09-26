@@ -64,8 +64,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         LocalDateTime start = resolveStart(filter);
         LocalDateTime end = resolveEnd(filter);
 
-        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end, OrderStatus.CANCELLED);
-        long totalOrders = orderRepository.countByCreatedAtBetween(start, end, OrderStatus.CANCELLED);
+        BigDecimal totalRevenue = orderRepository.sumTotalAmountBetween(start, end);
+        long totalOrders = orderRepository.countSuccessfulByCreatedAtBetween(start, end);
 
         SalesAnalyticsResponse response = new SalesAnalyticsResponse();
         response.setTotalRevenue(totalRevenue);
@@ -154,7 +154,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         long totalCustomers = userRepository.countByRole(Role.CUSTOMER);
         long newCustomers = userRepository.countByRoleAndCreatedAtBetween(
                 Role.CUSTOMER, start, end);
-        BigDecimal rangeRevenue = orderRepository.sumTotalAmountBetween(start, end, OrderStatus.CANCELLED);
+        BigDecimal rangeRevenue = orderRepository.sumTotalAmountBetween(start, end);
 
         CustomerAnalyticsResponse response = new CustomerAnalyticsResponse();
         response.setTotalCustomers(totalCustomers);

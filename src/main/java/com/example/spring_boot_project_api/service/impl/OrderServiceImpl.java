@@ -6,6 +6,7 @@ import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.order.AdminOrderSummaryResponse;
 import com.example.spring_boot_project_api.dto.response.order.CheckoutResponse;
 import com.example.spring_boot_project_api.dto.response.order.OrderStatusHistoryResponse;
+import com.example.spring_boot_project_api.dto.response.payment.PaymentResponse;
 import com.example.spring_boot_project_api.service.NotificationService;
 import com.example.spring_boot_project_api.service.PaymentService;
 import com.example.spring_boot_project_api.service.TelegramService;
@@ -270,6 +271,41 @@ public class OrderServiceImpl implements OrderService {
         Order order = findOrder(orderId);
 
         checkOwnership(order, userId);
+
+        Payment pendingKhqr = paymentRepository.findByOrderId(orderId)
+                .filter(payment -> payment.getPaymentMethod() == PaymentMethod.KHQR
+                        && payment.getStatus() == PaymentStatus.PENDING)
+                .orElse(null);
+        if (pendingKhqr != null) {
+            PaymentResponse verification;
+            try {
+                verification = paymentService.verifyBakongPaymentForCancellation(pendingKhqr.getId());
+            } catch (RuntimeException ex) {
+                throw new InvalidOrderException(
+                        "We could not verify this KHQR payment, so the order was not cancelled. "
+                                + "Please retry shortly or contact customer service.");
+            }
+            if (verification.getStatus() == PaymentStatus.SUCCESSFUL) {
+                throw new InvalidOrderException(
+                        "This order has already been paid. Contact customer service for help.");
+            }
+            if (paymentService.isBakongVerificationSuspended()) {
+                throw new InvalidOrderException(
+                        "Payment verification is temporarily unavailable, so the order was not cancelled. Please try again later.");
+            }
+        }
+
+        boolean paymentSuccessful = paymentRepository.existsByOrderIdAndStatus(
+                orderId, PaymentStatus.SUCCESSFUL);
+        boolean orderAlreadyPaidOrBeingFulfilled = order.getStatus() == OrderStatus.PAID
+                || order.getStatus() == OrderStatus.CONFIRMED
+                || order.getStatus() == OrderStatus.PROCESSING
+                || order.getStatus() == OrderStatus.SHIPPED
+                || order.getStatus() == OrderStatus.DELIVERED;
+        if (paymentSuccessful || orderAlreadyPaidOrBeingFulfilled) {
+            throw new InvalidOrderException(
+                    "This order has already been paid. Contact customer service for help.");
+        }
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new InvalidOrderException("Order is already cancelled");

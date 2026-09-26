@@ -21,6 +21,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             select fp.fragranceFamily as fragranceFamily, sum(oi.quantity) as quantity
             from OrderItem oi join oi.variant v join v.product p join p.fragranceProfile fp
             where oi.order.user.id = :userId and oi.order.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = oi.order and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
               and fp.fragranceFamily is not null and fp.fragranceFamily <> ''
             group by fp.fragranceFamily order by sum(oi.quantity) desc
             """)
@@ -40,6 +41,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             from tb_order_items oi
             join tb_orders o on o.id = oi.order_id
             where o.status <> 'CANCELLED'
+              and exists (select 1 from tb_payments pay where pay.order_id = o.id and pay.status = 'SUCCESSFUL')
             group by oi.product_name, oi.brand
             order by cast(sum(oi.quantity) as signed) desc
             limit 5
@@ -53,6 +55,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             from OrderItem oi
             where oi.order.createdAt >= :start and oi.order.createdAt < :end
               and oi.order.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = oi.order and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             group by function('date', oi.order.createdAt)
             order by function('date', oi.order.createdAt) asc
             """)
@@ -68,6 +71,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             from OrderItem oi
             where oi.order.createdAt >= :start and oi.order.createdAt < :end
               and oi.order.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = oi.order and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             group by oi.productName, oi.brand
             order by sum(oi.quantity) desc
             """)
@@ -86,6 +90,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             join p.category c
             where oi.order.createdAt >= :start and oi.order.createdAt < :end
               and oi.order.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = oi.order and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             group by c.name
             order by sum(oi.subtotal) desc
             """)
@@ -103,6 +108,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             join p.brand b
             where oi.order.createdAt >= :start and oi.order.createdAt < :end
               and oi.order.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = oi.order and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
             group by b.name
             order by sum(oi.subtotal) desc
             """)
@@ -120,6 +126,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             join p.fragranceProfile fp
             where oi.order.createdAt >= :start and oi.order.createdAt < :end
               and oi.order.status <> :cancelled
+              and exists (select p.id from Payment p where p.order = oi.order and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL)
               and fp.fragranceFamily is not null and fp.fragranceFamily <> ''
             group by fp.fragranceFamily
             order by sum(oi.subtotal) desc
@@ -154,6 +161,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                 and oi.order.createdAt >= :start and oi.order.createdAt < :end
                 and oi.order.status <> :cancelled
             where v.isActive = true
+              and (oi is null or exists (select p.id from Payment p where p.order = oi.order and p.status = com.example.spring_boot_project_api.enums.PaymentStatus.SUCCESSFUL))
             group by v.id, p.id, p.name, b.name, v.sizeMl, v.stock
             """)
     List<VariantSalesStat> findVariantSales(@Param("start") LocalDateTime start,

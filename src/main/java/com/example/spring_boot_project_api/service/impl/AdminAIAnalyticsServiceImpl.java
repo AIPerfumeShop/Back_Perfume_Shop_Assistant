@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,8 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
     private static final long SLOW_MOVING_MAX_UNITS = 0L;
     private static final int TOP_N = 5;
     private static final int LOW_RATED_MAX_RATING = 3;
+    private static final int MAX_CACHED_INSIGHTS = 128;
+    private static final long INSIGHT_CACHE_TTL_MILLIS = 120_000L;
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -71,6 +74,7 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
     private final OpenRouterService openRouterService;
 
     private final boolean insightEnabled;
+    private final Map<String, CachedInsight> insightCache = new LinkedHashMap<>();
 
     public AdminAIAnalyticsServiceImpl(
             OrderRepository orderRepository,
@@ -104,9 +108,9 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
         Window window = resolveWindow(filter);
 
         BigDecimal revenue = orderRepository.sumTotalAmountBetween(
-                window.start(), window.end(), OrderStatus.CANCELLED);
-        long orders = orderRepository.countByCreatedAtBetween(
-                window.start(), window.end(), OrderStatus.CANCELLED);
+                window.start(), window.end());
+        long orders = orderRepository.countSuccessfulByCreatedAtBetween(
+                window.start(), window.end());
         BigDecimal expenses = expenseRepository.sumAmountBetween(window.from(), window.to());
         Map<String, BigDecimal> byCategory = expenseByCategory(window.from(), window.to());
 
@@ -304,14 +308,14 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
         List<AdminAnomalyDetectionResponse.AnomalyItem> anomalies = new ArrayList<>();
         compare(anomalies, "Revenue",
                 orderRepository.sumTotalAmountBetween(
-                        window.start(), window.end(), OrderStatus.CANCELLED),
+                        window.start(), window.end()),
                 orderRepository.sumTotalAmountBetween(
-                        previous.start(), previous.end(), OrderStatus.CANCELLED));
+                        previous.start(), previous.end()));
         compare(anomalies, "Orders",
-                BigDecimal.valueOf(orderRepository.countByCreatedAtBetween(
-                        window.start(), window.end(), OrderStatus.CANCELLED)),
-                BigDecimal.valueOf(orderRepository.countByCreatedAtBetween(
-                        previous.start(), previous.end(), OrderStatus.CANCELLED)));
+                BigDecimal.valueOf(orderRepository.countSuccessfulByCreatedAtBetween(
+                        window.start(), window.end())),
+                BigDecimal.valueOf(orderRepository.countSuccessfulByCreatedAtBetween(
+                        previous.start(), previous.end())));
         compare(anomalies, "Units sold",
                 BigDecimal.valueOf(safeLong(orderItemRepository.sumQuantityBetween(
                         window.start(), window.end(), OrderStatus.CANCELLED))),
@@ -521,9 +525,9 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
         Window window = resolveWindow(filter);
 
         BigDecimal revenue = orderRepository.sumTotalAmountBetween(
-                window.start(), window.end(), OrderStatus.CANCELLED);
-        long orders = orderRepository.countByCreatedAtBetween(
-                window.start(), window.end(), OrderStatus.CANCELLED);
+                window.start(), window.end());
+        long orders = orderRepository.countSuccessfulByCreatedAtBetween(
+                window.start(), window.end());
         BigDecimal expenses = expenseRepository.sumAmountBetween(window.from(), window.to());
         BigDecimal profit = safe(revenue).subtract(safe(expenses));
         long newCustomers = userRepository.countByRoleAndCreatedAtBetween(
@@ -628,12 +632,12 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
                 ? 0.0
                 : round2(((double) purchaseIntervals + activeCustomers) / activeCustomers);
         BigDecimal revenue = orderRepository.sumTotalAmountBetween(
-                window.start(), window.end(), OrderStatus.CANCELLED);
+                window.start(), window.end());
         BigDecimal averageRevenuePerCustomer = activeCustomers == 0
                 ? BigDecimal.ZERO
                 : safe(revenue).divide(BigDecimal.valueOf(activeCustomers),
                         2, RoundingMode.HALF_UP);
-        BigDecimal lifetimeSpend = orderRepository.sumTotalAmount(OrderStatus.CANCELLED);
+        BigDecimal lifetimeSpend = orderRepository.sumTotalAmount();
         BigDecimal customerLifetimeValue = totalCustomers == 0
                 ? BigDecimal.ZERO
                 : safe(lifetimeSpend).divide(BigDecimal.valueOf(totalCustomers),
@@ -855,9 +859,20 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
     private record Insight(String text, List<String> bullets, boolean aiGenerated) {
     }
 
+    private record CachedInsight(Insight insight, long expiresAtMillis) {
+    }
+
     private Insight generate(String prompt, List<String> fallbackBullets) {
         if (!insightEnabled) {
             return new Insight(String.join("\n", fallbackBullets), fallbackBullets, false);
+        }
+        long now = System.currentTimeMillis();
+        synchronized (insightCache) {
+            CachedInsight cached = insightCache.get(prompt);
+            if (cached != null && cached.expiresAtMillis() > now) {
+                return cached.insight();
+            }
+            insightCache.remove(prompt);
         }
         try {
             AIMessage userMessage = new AIMessage();
@@ -870,12 +885,32 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
                         .map(String::strip)
                         .filter(line -> !line.isEmpty())
                         .toList();
-                return new Insight(trimmed, bullets, true);
+                Insight result = new Insight(trimmed, bullets, true);
+                cacheInsight(prompt, result, now);
+                return result;
             }
         } catch (Exception ex) {
             log.warn("AI analytics insight generation failed, using deterministic summary", ex);
         }
         return new Insight(String.join("\n", fallbackBullets), fallbackBullets, false);
+    }
+
+    private void cacheInsight(String prompt, Insight insight, long now) {
+        synchronized (insightCache) {
+            Iterator<Map.Entry<String, CachedInsight>> iterator = insightCache.entrySet().iterator();
+            while (iterator.hasNext()) {
+                if (iterator.next().getValue().expiresAtMillis() <= now) {
+                    iterator.remove();
+                }
+            }
+            while (insightCache.size() >= MAX_CACHED_INSIGHTS) {
+                Iterator<String> keys = insightCache.keySet().iterator();
+                if (!keys.hasNext()) break;
+                keys.next();
+                keys.remove();
+            }
+            insightCache.put(prompt, new CachedInsight(insight, now + INSIGHT_CACHE_TTL_MILLIS));
+        }
     }
 
     private record Window(LocalDate from, LocalDate to) {

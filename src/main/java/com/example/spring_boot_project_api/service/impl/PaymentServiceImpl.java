@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -83,7 +84,7 @@ public class PaymentServiceImpl implements PaymentService {
                               AppSettingRepository appSettingRepository,
                               @Value("${payment.bakong.max-daily-checks:90}")
                               int maxDailyChecks,
-                              @Value("${payment.bakong.min-check-interval-ms:180000}")
+                              @Value("${payment.bakong.min-check-interval-ms:60000}")
                               long minCheckIntervalMs,
                               @Value("${payment.bakong.forced-verify-reserve:10}")
                               int forcedVerifyReserve,
@@ -170,10 +171,6 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException(
                     "Payment has already been completed");
         }
-        if (payment.getStatus() == PaymentStatus.REFUNDED) {
-            throw new BadRequestException(
-                    "Payment has already been refunded");
-        }
         if (payment.getPaymentMethod() == null) {
             throw new BadRequestException(
                     "Payment method is missing");
@@ -211,10 +208,6 @@ public class PaymentServiceImpl implements PaymentService {
         // outcome without re-processing, so double-taps cannot double-charge.
         if (payment.getStatus() == PaymentStatus.SUCCESSFUL) {
             return true;
-        }
-        if (payment.getStatus() == PaymentStatus.REFUNDED) {
-            throw new BadRequestException(
-                    "Payment cannot be processed again");
         }
         if (payment.getPaymentMethod() == PaymentMethod.CASH) {
             throw new BadRequestException(
@@ -323,8 +316,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Already terminal: return current status idempotently instead of
         // throwing, so the frontend auto-poll can pick up the result.
-        if (payment.getStatus() == PaymentStatus.SUCCESSFUL
-                || payment.getStatus() == PaymentStatus.REFUNDED) {
+        if (payment.getStatus() == PaymentStatus.SUCCESSFUL) {
             return paymentMapper.toResponse(payment);
         }
         if (payment.getMd5() == null || payment.getMd5().isBlank()) {
@@ -395,6 +387,12 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return paymentMapper.toResponse(findPayment(paymentId));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public PaymentResponse verifyBakongPaymentForCancellation(Long paymentId) {
+        return verifyBakongPayment(paymentId, true);
     }
 
     /**
@@ -600,26 +598,33 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentResponse updatePaymentStatus(Long paymentId, String status, String reason) {
         Payment payment = findPayment(paymentId);
-
         PaymentStatus newStatus;
         try {
             newStatus = PaymentStatus.valueOf(status.trim().toUpperCase());
         } catch (IllegalArgumentException ex) {
             throw new BadRequestException(
                     "Invalid payment status: " + status
-                            + ". Allowed values: SUCCESSFUL, FAILED, REFUNDED");
+                            + ". Allowed values: SUCCESSFUL, FAILED");
         }
 
         if (newStatus != PaymentStatus.SUCCESSFUL
-                && newStatus != PaymentStatus.FAILED
-                && newStatus != PaymentStatus.REFUNDED) {
+                && newStatus != PaymentStatus.FAILED) {
             throw new BadRequestException(
-                    "Only terminal statuses (SUCCESSFUL, FAILED, REFUNDED) can be set manually");
+                    "Invalid manual payment status");
+        }
+
+        if (payment.getPaymentMethod() != PaymentMethod.CASH) {
+            throw new BadRequestException(
+                    "Manual status changes are limited to COD orders");
         }
 
         PaymentStatus oldStatus = payment.getStatus();
         if (oldStatus == newStatus) {
             return paymentMapper.toResponse(payment);
+        }
+
+        if (oldStatus == PaymentStatus.SUCCESSFUL && newStatus == PaymentStatus.FAILED) {
+            throw new BadRequestException("A successful payment cannot be marked failed");
         }
 
         payment.setStatus(newStatus);

@@ -15,6 +15,8 @@ import com.example.spring_boot_project_api.model.Payment;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByOrderId(Long orderId);
 
+    boolean existsByOrderIdAndStatus(Long orderId, PaymentStatus status);
+
     Optional<Payment> findByTransactionId(String transactionId);
 
     List<Payment> findAllByOrderIdOrderByCreatedAtDesc(Long orderId);

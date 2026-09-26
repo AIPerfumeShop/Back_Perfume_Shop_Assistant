@@ -10,5 +10,7 @@ import com.example.spring_boot_project_api.dto.response.ai.AIRecommendationRespo
 public interface AIRecommendationService {
     List<AIRecommendationResponse> recommend(Long userId, AIRecommendationRequest request);
 
+    List<AIRecommendationResponse> getLatestConversationRecommendations(Long userId, Long conversationId);
+
     AIRecommendationClickResponse trackClick(Long userId, AIRecommendationClickRequest request);
 }

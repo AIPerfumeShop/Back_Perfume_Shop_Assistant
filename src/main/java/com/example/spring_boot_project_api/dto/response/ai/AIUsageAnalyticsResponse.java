@@ -8,6 +8,7 @@ import lombok.Setter;
 public class AIUsageAnalyticsResponse {
     private long totalConversations;
     private long totalMessages;
+    private double averageMessagesPerConversation;
     private long totalRecommendations;
     private long totalClicks;
     private long uniqueUsers;
