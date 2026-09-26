@@ -19,6 +19,7 @@ public class ProductResponse {
     private String fragranceFamily;
     private String fragNotes;
     private String intensity;
+    private String concentration;
     private List<String> images;
     private Double averageRate;
     private Integer reviewCount;

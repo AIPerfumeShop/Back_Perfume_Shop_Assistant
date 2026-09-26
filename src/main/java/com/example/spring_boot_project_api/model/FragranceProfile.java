@@ -1,5 +1,6 @@
 package com.example.spring_boot_project_api.model;
 
+import com.example.spring_boot_project_api.enums.Concentration;
 import com.example.spring_boot_project_api.enums.Gender;
 import com.example.spring_boot_project_api.enums.Intensity;
 
@@ -43,4 +44,8 @@ public class FragranceProfile {
     @Enumerated(EnumType.STRING)
     @Column(name = "intensity")
     private Intensity intensity;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "concentration", length = 20)
+    private Concentration concentration;
 }

@@ -24,7 +24,7 @@ public interface CustomerCareService {
     SupportTicketResponse handoff(Long userId, HandoffRequest request);
 
     //Customer's own tickets
-    PagedResponse<SupportTicketResponse> getCustomerTickets(Long userId, int page, int size);
+    PagedResponse<SupportTicketResponse> getCustomerTickets(Long userId, int page, int size, String search);
 
     //Customer view of one ticket (thread, no internal notes)
     SupportTicketDetailResponse getCustomerTicket(Long userId, Long ticketId);

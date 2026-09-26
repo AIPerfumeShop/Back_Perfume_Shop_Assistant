@@ -86,6 +86,9 @@ public class ProductMapper {
         response.setIntensity(profile.getIntensity() != null
                 ? profile.getIntensity().name()
                 : null);
+        response.setConcentration(profile.getConcentration() != null
+                ? profile.getConcentration().name()
+                : null);
     }
 
     private boolean isInStock(Product product) {

@@ -6,6 +6,7 @@ import java.util.Set;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
+import com.example.spring_boot_project_api.enums.Concentration;
 import com.example.spring_boot_project_api.enums.Gender;
 
 import lombok.Getter;
@@ -31,9 +32,10 @@ public class ProductFilterRequest {
     private String brand;
     private Gender gender;
     private String fragranceFamily;
+    private Concentration concentration;
     private BigDecimal maxPrice;
     private BigDecimal minPrice;
-    private Integer minRate;
+    private Double minRate;
     private Boolean inStock;
     //null (default) or true -> only active products; false -> only inactive products
     private Boolean isActive;

@@ -31,6 +31,8 @@ public class ProductRequest {
 
     private String intensity;
 
+    private String concentration;
+
     private List<String> fragNotes;
 
     private List<String> images;

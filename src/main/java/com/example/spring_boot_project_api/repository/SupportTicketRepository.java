@@ -18,6 +18,20 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
 
     Page<SupportTicket> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
+    @Query("""
+            SELECT t FROM SupportTicket t
+             WHERE t.user.id = :userId
+               AND (:search IS NULL OR :search = ''
+                    OR LOWER(t.ticketNumber) LIKE CONCAT('%', LOWER(:search), '%')
+                    OR LOWER(COALESCE(t.summary, '')) LIKE CONCAT('%', LOWER(:search), '%')
+                    OR LOWER(COALESCE(t.reason, '')) LIKE CONCAT('%', LOWER(:search), '%'))
+             ORDER BY t.createdAt DESC
+            """)
+    Page<SupportTicket> findCustomerTickets(
+            @Param("userId") Long userId,
+            @Param("search") String search,
+            Pageable pageable);
+
     List<SupportTicket> findAllByUserIdOrderByCreatedAtDesc(Long userId);
 
     Page<SupportTicket> findByStatusOrderByCreatedAtDesc(TicketStatus status, Pageable pageable);

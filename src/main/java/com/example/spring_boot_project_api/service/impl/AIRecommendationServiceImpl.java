@@ -128,8 +128,9 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         AIRecommendationRequest criteria = mergeSavedPreferences(source, req.getPreferences());
         int candidateLimit = Math.max(60, Math.min(100, limit * 20));
         List<Product> candidates = queryProducts(criteria, candidateLimit);
-        // Keep explicit and saved budget limits as hard constraints. If nothing
-        // matches, return no results instead of silently recommending outside budget.
+        // Explicit budget filters from the current request remain hard limits.
+        // Saved profile budgets affect ranking, so a narrow saved range does not
+        // leave the customer with only one product when similar options exist.
         Set<Long> previouslyRecommended = conversation == null
                 ? Set.of()
                 : recommendationRepository.findByConversationId(conversation.getId()).stream()
@@ -253,8 +254,6 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         merged.setMaxPrice(base.getMaxPrice());
         merged.setMinRate(base.getMinRate());
         merged.setPreferences(preferences);
-        if (merged.getMinPrice() == null) merged.setMinPrice(preferences.getPriceMin());
-        if (merged.getMaxPrice() == null) merged.setMaxPrice(preferences.getPriceMax());
         return merged;
     }
 
@@ -469,7 +468,7 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
         filter.setFragranceFamily(request.getFragranceFamily());
         filter.setMinPrice(request.getMinPrice());
         filter.setMaxPrice(request.getMaxPrice());
-        filter.setMinRate(request.getMinRate());
+        filter.setMinRate(request.getMinRate() == null ? null : request.getMinRate().doubleValue());
         filter.setInStock(Boolean.TRUE);
         filter.setPage(0);
         filter.setSize(limit);

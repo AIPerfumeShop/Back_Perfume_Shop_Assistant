@@ -190,7 +190,7 @@ class ProductSpecificationTest {
         when(cb.greaterThanOrEqualTo(any(), eq(4.0))).thenReturn(havingPred);
 
         ProductFilterRequest filter = new ProductFilterRequest();
-        filter.setMinRate(4);
+        filter.setMinRate(4.0);
 
         assertNotNull(run(ProductSpecification.fromFilter(filter), root));
         verify(cb).avg(any());

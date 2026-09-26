@@ -339,14 +339,16 @@ public class CustomerCareServiceImpl implements CustomerCareService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<SupportTicketResponse> getCustomerTickets(Long userId, int page, int size) {
+    public PagedResponse<SupportTicketResponse> getCustomerTickets(
+            Long userId, int page, int size, String search) {
         findUser(userId);
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
                 size > 0 ? Math.min(size, 50) : 20,
                 Sort.by(Sort.Direction.DESC, "createdAt"));
+        String searchTerm = search == null || search.isBlank() ? null : search.trim();
         Page<SupportTicket> tickets = supportTicketRepository
-                .findByUserIdOrderByCreatedAtDesc(userId, pageable);
+                .findCustomerTickets(userId, searchTerm, pageable);
         return new PagedResponse<>(
                 supportTicketMapper.toResponseList(tickets.getContent()),
                 tickets.getTotalElements(),

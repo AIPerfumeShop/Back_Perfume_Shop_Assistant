@@ -20,6 +20,7 @@ import com.example.spring_boot_project_api.dto.request.product.ProductVariantReq
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
 import com.example.spring_boot_project_api.dto.response.inventory.InventoryItemResponse;
 import com.example.spring_boot_project_api.dto.response.product.ProductResponse;
+import com.example.spring_boot_project_api.enums.Concentration;
 import com.example.spring_boot_project_api.enums.Gender;
 import com.example.spring_boot_project_api.enums.Intensity;
 import com.example.spring_boot_project_api.exception.BadRequestException;
@@ -371,6 +372,7 @@ public class ProductServiceImpl implements ProductService {
         boolean hasProfileInfo = request.getGender() != null
                 || request.getFragranceFamily() != null
                 || request.getIntensity() != null
+                || request.getConcentration() != null
                 || (request.getFragNotes() != null && !request.getFragNotes().isEmpty());
 
         if (!hasProfileInfo) {
@@ -387,6 +389,7 @@ public class ProductServiceImpl implements ProductService {
         profile.setGender(parseGender(request.getGender()));
         profile.setFragranceFamily(request.getFragranceFamily());
         profile.setIntensity(parseIntensity(request.getIntensity()));
+        profile.setConcentration(parseConcentration(request.getConcentration()));
         profile.setFragNotes(joinFragNotes(request.getFragNotes()));
     }
 
@@ -405,6 +408,18 @@ public class ProductServiceImpl implements ProductService {
             return Gender.valueOf(normalized);
         } catch (IllegalArgumentException ex) {
             throw new BadRequestException("Invalid gender: " + value);
+        }
+    }
+
+    private Concentration parseConcentration(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            String normalized = value.trim().toUpperCase().replace(' ', '_').replace('-', '_');
+            return Concentration.valueOf(normalized);
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Invalid concentration: " + value);
         }
     }
 

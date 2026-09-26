@@ -66,6 +66,12 @@ public class ProductSpecification {
                                 filter.getFragranceFamily().trim().toLowerCase()));
             }
 
+            if (filter.getConcentration() != null) {
+                Join<Product, FragranceProfile> profile = root.join("fragranceProfile");
+                predicate = cb.and(predicate,
+                        cb.equal(profile.get("concentration"), filter.getConcentration()));
+            }
+
             if (filter.getMinPrice() != null || filter.getMaxPrice() != null) {
                 Join<Product, ProductVariant> variant = root.join("variants");
                 if (filter.getMinPrice() != null && filter.getMaxPrice() != null) {

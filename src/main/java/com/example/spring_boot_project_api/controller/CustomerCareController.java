@@ -80,10 +80,11 @@ public class CustomerCareController {
     @GetMapping("/tickets")
     public ResponseEntity<PagedResponse<SupportTicketResponse>> getCustomerTickets(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String search) {
         Long userId = SecurityUtils.currentUserId()
                 .orElseThrow(() -> new UnauthorizedException("Authentication required"));
-        return ResponseEntity.ok(customerCareService.getCustomerTickets(userId, page, size));
+        return ResponseEntity.ok(customerCareService.getCustomerTickets(userId, page, size, search));
     }
 
     //Customer view of one ticket
