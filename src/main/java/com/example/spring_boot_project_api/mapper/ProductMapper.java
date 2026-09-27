@@ -93,6 +93,7 @@ public class ProductMapper {
 
     private boolean isInStock(Product product) {
         return product.getVariants() != null && product.getVariants().stream()
-                .anyMatch(variant -> variant.getStock() != null && variant.getStock() > 0);
+                .anyMatch(variant -> Boolean.TRUE.equals(variant.getIsActive())
+                        && variant.getStock() != null && variant.getStock() > 0);
     }
 }

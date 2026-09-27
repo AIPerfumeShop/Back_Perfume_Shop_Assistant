@@ -2,9 +2,11 @@ package com.example.spring_boot_project_api.config;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -19,6 +21,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final boolean enabled;
     private final double capacity;
     private final double refillPerSecond;
+    private final Set<String> trustedProxies;
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
 
     private static final Set<String> SENSITIVE_ENDPOINTS = Set.of(
@@ -30,10 +33,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
             "POST /api/auth/verify-otp",
             "POST /api/auth/reset-password");
 
-    public RateLimitFilter(boolean enabled, int capacity, int windowSeconds) {
+    public RateLimitFilter(boolean enabled, int capacity, int windowSeconds, String trustedProxyAddresses) {
         this.enabled = enabled;
         this.capacity = capacity;
         this.refillPerSecond = windowSeconds > 0 ? (double) capacity / windowSeconds : Double.MAX_VALUE;
+        this.trustedProxies = trustedProxyAddresses == null || trustedProxyAddresses.isBlank()
+                ? Set.of()
+                : Arrays.stream(trustedProxyAddresses.split(","))
+                        .map(String::trim)
+                        .filter(address -> !address.isEmpty())
+                        .collect(Collectors.toUnmodifiableSet());
     }
 
     @Override
@@ -57,11 +66,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private String clientKey(HttpServletRequest request) {
+        String remoteAddress = request.getRemoteAddr();
+        if (!trustedProxies.contains(remoteAddress)) {
+            return remoteAddress;
+        }
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
+            String[] chain = forwardedFor.split(",");
+            for (int i = chain.length - 1; i >= 0; i--) {
+                String address = chain[i].trim();
+                if (!address.isEmpty() && !trustedProxies.contains(address)) {
+                    return address;
+                }
+            }
         }
-        return request.getRemoteAddr();
+        return remoteAddress;
     }
 
     private void writeTooManyRequests(HttpServletResponse response) throws IOException {

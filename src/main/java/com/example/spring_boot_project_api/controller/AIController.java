@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
+import com.example.spring_boot_project_api.dto.request.ai.EditAIMessageRequest;
 import com.example.spring_boot_project_api.dto.request.ai.RenameConversationRequest;
 import com.example.spring_boot_project_api.dto.request.ai.ScentConciergeRequest;
 import com.example.spring_boot_project_api.dto.request.ai.FragranceProfileRequest;
@@ -70,6 +71,13 @@ public class AIController {
     public ResponseEntity<AIChatResponse> chat(@Valid @RequestBody AIChatRequest request){
         AIChatResponse response = aiService.chat(currentUserId(), request);
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/conversations/{conversationId}/messages/edit")
+    public ResponseEntity<AIChatResponse> editMessage(
+            @PathVariable Long conversationId,
+            @Valid @RequestBody EditAIMessageRequest request) {
+        return ResponseEntity.ok(aiService.editMessage(currentUserId(), conversationId, request));
     }
 
     //Stream AI response token by token over SSE

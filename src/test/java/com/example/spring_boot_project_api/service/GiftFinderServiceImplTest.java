@@ -215,6 +215,21 @@ class GiftFinderServiceImplTest {
     }
 
     @Test
+    void doesNotTreatInactiveCheapVariantAsAnExactBudgetMatch() {
+        Product perfume = product(1, "Rose Bloom", "Maison", Gender.WOMEN, "Floral", "rose");
+        stubCandidates(List.of(perfume), List.of(
+                variant(perfume, new BigDecimal("40.00"), 5, false),
+                variant(perfume, new BigDecimal("80.00"), 5, true)));
+
+        GiftFinderResponse response = service.recommend(request());
+
+        assertFalse(response.isExactMatchFound());
+        assertNull(response.getTopRecommendation());
+        assertEquals(1, response.getAlternatives().size());
+        assertEquals(new BigDecimal("80.00"), response.getAlternatives().get(0).getPrice());
+    }
+
+    @Test
     void returnsEmptyWhenNoProductsMatchAtAll() {
         when(productRepository.findAll(
                 any(Specification.class), any(Pageable.class)))

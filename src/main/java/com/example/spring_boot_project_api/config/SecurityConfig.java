@@ -28,6 +28,9 @@ public class SecurityConfig {
     @Value("${app.rate-limit.window-seconds:60}")
     private int rateLimitWindowSeconds;
 
+    @Value("${app.rate-limit.trusted-proxies:}")
+    private String trustedProxyAddresses;
+
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
@@ -119,7 +122,8 @@ public class SecurityConfig {
 
     @Bean
     public FilterRegistrationBean<RateLimitFilter> rateLimitFilter() {
-        RateLimitFilter filter = new RateLimitFilter(rateLimitEnabled, rateLimitCapacity, rateLimitWindowSeconds);
+        RateLimitFilter filter = new RateLimitFilter(rateLimitEnabled, rateLimitCapacity,
+                rateLimitWindowSeconds, trustedProxyAddresses);
         FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(-110);
         return registration;

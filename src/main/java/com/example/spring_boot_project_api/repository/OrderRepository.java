@@ -28,12 +28,9 @@ public interface OrderRepository extends JpaRepository<Order, Long>,
 
     List<Order> findTop10ByOrderByCreatedAtDesc();
 
-    /**
-     * Most recent orders for a user after a cutoff, excluding cancelled ones.
-     * Used by the checkout duplicate-guard to short-circuit double-taps.
-     */
-    List<Order> findTop10ByUserIdAndCreatedAtAfterAndStatusNotOrderByCreatedAtDesc(
-            Long userId, LocalDateTime after, OrderStatus excludedStatus);
+    /** Pending orders only are candidates for checkout double-tap protection. */
+    List<Order> findTop10ByUserIdAndCreatedAtAfterAndStatusOrderByCreatedAtDesc(
+            Long userId, LocalDateTime after, OrderStatus status);
 
     @Query("""
             select o.user.id as userId,

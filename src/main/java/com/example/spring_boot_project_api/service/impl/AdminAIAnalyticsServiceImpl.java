@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -61,7 +63,7 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
     private static final int TOP_N = 5;
     private static final int LOW_RATED_MAX_RATING = 3;
     private static final int MAX_CACHED_INSIGHTS = 128;
-    private static final long INSIGHT_CACHE_TTL_MILLIS = 120_000L;
+    private static final long INSIGHT_CACHE_TTL_MILLIS = 600_000L;
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -75,6 +77,7 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
 
     private final boolean insightEnabled;
     private final Map<String, CachedInsight> insightCache = new LinkedHashMap<>();
+    private final Map<String, CompletableFuture<Insight>> insightInFlight = new ConcurrentHashMap<>();
 
     public AdminAIAnalyticsServiceImpl(
             OrderRepository orderRepository,
@@ -874,25 +877,37 @@ public class AdminAIAnalyticsServiceImpl implements AdminAIAnalyticsService {
             }
             insightCache.remove(prompt);
         }
-        try {
-            AIMessage userMessage = new AIMessage();
-            userMessage.setSender(MessageSender.USER);
-            userMessage.setMessage(prompt);
-            String aiText = openRouterService.generateResponse(List.of(userMessage), null);
-            if (aiText != null && !aiText.isBlank()) {
-                String trimmed = aiText.trim();
-                List<String> bullets = trimmed.lines()
-                        .map(String::strip)
-                        .filter(line -> !line.isEmpty())
-                        .toList();
-                Insight result = new Insight(trimmed, bullets, true);
-                cacheInsight(prompt, result, now);
-                return result;
-            }
-        } catch (Exception ex) {
-            log.warn("AI analytics insight generation failed, using deterministic summary", ex);
+        CompletableFuture<Insight> pending = new CompletableFuture<>();
+        CompletableFuture<Insight> existing = insightInFlight.putIfAbsent(prompt, pending);
+        if (existing != null) {
+            return existing.join();
         }
-        return new Insight(String.join("\n", fallbackBullets), fallbackBullets, false);
+        try {
+            try {
+                AIMessage userMessage = new AIMessage();
+                userMessage.setSender(MessageSender.USER);
+                userMessage.setMessage(prompt);
+                String aiText = openRouterService.generateResponse(List.of(userMessage), null);
+                if (aiText != null && !aiText.isBlank()) {
+                    String trimmed = aiText.trim();
+                    List<String> bullets = trimmed.lines()
+                            .map(String::strip)
+                            .filter(line -> !line.isEmpty())
+                            .toList();
+                    Insight result = new Insight(trimmed, bullets, true);
+                    cacheInsight(prompt, result, now);
+                    pending.complete(result);
+                    return result;
+                }
+            } catch (Exception ex) {
+                log.warn("AI analytics insight generation failed, using deterministic summary", ex);
+            }
+            Insight fallback = new Insight(String.join("\n", fallbackBullets), fallbackBullets, false);
+            pending.complete(fallback);
+            return fallback;
+        } finally {
+            insightInFlight.remove(prompt, pending);
+        }
     }
 
     private void cacheInsight(String prompt, Insight insight, long now) {

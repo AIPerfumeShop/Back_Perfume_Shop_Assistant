@@ -244,6 +244,15 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        if (status != OrderStatus.PENDING && status != OrderStatus.CANCELLED) {
+            Payment orderPayment = paymentRepository.findByOrderId(orderId).orElse(null);
+            if (orderPayment != null
+                    && orderPayment.getPaymentMethod() != PaymentMethod.CASH
+                    && orderPayment.getStatus() != PaymentStatus.SUCCESSFUL) {
+                throw new InvalidOrderException("Payment must be confirmed before fulfillment");
+            }
+        }
+
         //Restore stock if order is being cancelled now
         if (status == OrderStatus.CANCELLED &&
                 oldStatus != OrderStatus.CANCELLED) {
@@ -478,17 +487,19 @@ public class OrderServiceImpl implements OrderService {
                 .minusSeconds(DUPLICATE_GUARD_WINDOW_SECONDS);
 
         List<Order> recent = orderRepository
-                .findTop10ByUserIdAndCreatedAtAfterAndStatusNotOrderByCreatedAtDesc(
-                        userId, cutoff, OrderStatus.CANCELLED);
+                .findTop10ByUserIdAndCreatedAtAfterAndStatusOrderByCreatedAtDesc(
+                        userId, cutoff, OrderStatus.PENDING);
 
         for (Order candidate : recent) {
-            if (candidate.getStatus() == OrderStatus.CANCELLED) {
-                continue;
-            }
             if (!sameShipping(request, candidate)) {
                 continue;
             }
-            if (sameItems(request, candidate)) {
+            Payment payment = paymentRepository.findByOrderId(candidate.getId()).orElse(null);
+            boolean samePayment = payment != null
+                    && payment.getStatus() == PaymentStatus.PENDING
+                    && request.getPaymentMethod() != null
+                    && payment.getPaymentMethod().name().equalsIgnoreCase(request.getPaymentMethod().trim());
+            if (samePayment && sameItems(request, candidate)) {
                 return candidate;
             }
         }

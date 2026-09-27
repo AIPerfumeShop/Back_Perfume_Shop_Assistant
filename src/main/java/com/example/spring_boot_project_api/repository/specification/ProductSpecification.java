@@ -1,6 +1,7 @@
 package com.example.spring_boot_project_api.repository.specification;
 import com.example.spring_boot_project_api.dto.request.product.ProductFilterRequest;
 import com.example.spring_boot_project_api.model.FragranceProfile;
+import com.example.spring_boot_project_api.model.Brand;
 import com.example.spring_boot_project_api.model.Product;
 import com.example.spring_boot_project_api.model.ProductVariant;
 import com.example.spring_boot_project_api.model.Review;
@@ -9,6 +10,7 @@ import java.math.BigDecimal;
 
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -25,6 +27,7 @@ public class ProductSpecification {
         return (root, query, cb) -> {
             query.distinct(true);
             Predicate predicate = cb.conjunction();
+            Join<Product, ProductVariant> variant = null;
 
             //Default: only active (not soft-deleted) products. Admin can opt into inactive via isActive=false.
             if (!Boolean.TRUE.equals(filter.getIncludeInactive())) {
@@ -37,9 +40,14 @@ public class ProductSpecification {
 
             if (filter.hasSearch()) {
                 String term = "%" + filter.getSearch().trim().toLowerCase() + "%";
+                Join<Product, Brand> brand = root.join("brand", JoinType.LEFT);
+                Join<Product, FragranceProfile> profile = root.join("fragranceProfile", JoinType.LEFT);
                 predicate = cb.and(predicate, cb.or(
                         cb.like(cb.lower(root.get("name")), term),
-                        cb.like(cb.lower(root.get("description")), term)));
+                        cb.like(cb.lower(root.get("description")), term),
+                        cb.like(cb.lower(brand.get("name")), term),
+                        cb.like(cb.lower(profile.get("fragranceFamily")), term),
+                        cb.like(cb.lower(profile.get("fragNotes")), term)));
             }
 
             if (filter.getCategoryId() != null) {
@@ -73,22 +81,26 @@ public class ProductSpecification {
             }
 
             if (filter.getMinPrice() != null || filter.getMaxPrice() != null) {
-                Join<Product, ProductVariant> variant = root.join("variants");
+                Expression<BigDecimal> startingPrice = lowestVariantPrice(
+                        query, root, cb, Boolean.TRUE.equals(filter.getInStock()));
                 if (filter.getMinPrice() != null && filter.getMaxPrice() != null) {
                     predicate = cb.and(predicate,
-                            cb.between(variant.get("price"),
+                            cb.between(startingPrice,
                                     filter.getMinPrice(), filter.getMaxPrice()));
                 } else if (filter.getMinPrice() != null) {
                     predicate = cb.and(predicate,
-                            cb.greaterThanOrEqualTo(variant.get("price"), filter.getMinPrice()));
+                            cb.greaterThanOrEqualTo(startingPrice, filter.getMinPrice()));
                 } else {
                     predicate = cb.and(predicate,
-                            cb.lessThanOrEqualTo(variant.get("price"), filter.getMaxPrice()));
+                            cb.lessThanOrEqualTo(startingPrice, filter.getMaxPrice()));
                 }
             }
 
             if (Boolean.TRUE.equals(filter.getInStock())) {
-                Join<Product, ProductVariant> variant = root.join("variants");
+                if (variant == null) {
+                    variant = root.join("variants");
+                    predicate = cb.and(predicate, cb.isTrue(variant.get("isActive")));
+                }
                 predicate = cb.and(predicate,
                         cb.greaterThan(variant.get("stock"), 0));
             }
@@ -102,17 +114,55 @@ public class ProductSpecification {
 
             // 9. PRICE SORT — order by lowest variant price
             if (filter.isPriceSort()) {
-                Subquery<BigDecimal> minPrice = query.subquery(BigDecimal.class);
-                Root<ProductVariant> subVariant = minPrice.from(ProductVariant.class);
-                minPrice.select(cb.min(subVariant.get("price")));
-                minPrice.where(cb.equal(subVariant.get("product").get("id"), root.get("id")));
+                Expression<BigDecimal> minPrice = lowestVariantPrice(
+                        query, root, cb, Boolean.TRUE.equals(filter.getInStock()));
                 Order order = "desc".equalsIgnoreCase(filter.getDirection())
                         ? cb.desc(minPrice)
                         : cb.asc(minPrice);
-                query.orderBy(order);
+                query.orderBy(order, cb.asc(root.get("id")));
+            } else if (filter.isAverageRateSort()) {
+                Subquery<Double> averageRate = query.subquery(Double.class);
+                Root<Review> review = averageRate.from(Review.class);
+                averageRate.select(cb.avg(review.<Integer>get("rating")));
+                averageRate.where(cb.equal(review.get("product").get("id"), root.get("id")));
+                Expression<Double> rate = cb.coalesce(averageRate, 0.0);
+                Order order = "asc".equalsIgnoreCase(filter.getDirection())
+                        ? cb.asc(rate)
+                        : cb.desc(rate);
+                query.orderBy(order, cb.asc(root.get("id")));
             }
 
             return predicate;
         };
+    }
+
+    private static Expression<BigDecimal> lowestVariantPrice(
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            Root<Product> root,
+            jakarta.persistence.criteria.CriteriaBuilder cb,
+            boolean requireStock) {
+        Expression<BigDecimal> availablePrice = variantPriceSubquery(query, root, cb, true);
+        if (requireStock) {
+            return availablePrice;
+        }
+        return cb.coalesce(availablePrice, variantPriceSubquery(query, root, cb, false));
+    }
+
+    private static Expression<BigDecimal> variantPriceSubquery(
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            Root<Product> root,
+            jakarta.persistence.criteria.CriteriaBuilder cb,
+            boolean requireStock) {
+        Subquery<BigDecimal> minPrice = query.subquery(BigDecimal.class);
+        Root<ProductVariant> variant = minPrice.from(ProductVariant.class);
+        Predicate matchesProduct = cb.equal(variant.get("product").get("id"), root.get("id"));
+        Predicate isActive = cb.isTrue(variant.get("isActive"));
+        Predicate available = cb.and(matchesProduct, isActive);
+        if (requireStock) {
+            available = cb.and(available, cb.greaterThan(variant.<Integer>get("stock"), 0));
+        }
+        minPrice.select(cb.min(variant.<BigDecimal>get("price")));
+        minPrice.where(available);
+        return minPrice;
     }
 }

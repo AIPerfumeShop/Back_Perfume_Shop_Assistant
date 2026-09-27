@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.spring_boot_project_api.dto.request.ai.AIChatRequest;
+import com.example.spring_boot_project_api.dto.request.ai.EditAIMessageRequest;
 import com.example.spring_boot_project_api.dto.request.ai.AIChatPreferences;
 import com.example.spring_boot_project_api.dto.request.ai.AIRecommendationRequest;
 import com.example.spring_boot_project_api.dto.response.PagedResponse;
@@ -77,18 +78,68 @@ public class AIServiceImpl implements AIService {
     public AIChatResponse chat(Long userId, AIChatRequest request) {
 
         AIConversation conversation = resolveConversation(userId, request);
-        saveUserMessage(request, conversation);
+        AIMessage userMessage = saveUserMessage(request, conversation);
         List<AIMessage> history = loadHistory(conversation.getId());
 
+        RecommendationContext recommendations = buildRankedRecommendationContext(
+                userId, conversation, request.getMessage(), request.getPreferences());
         String catalog = productCatalogBuilder.build()
                 + buildPersonalizationContext(userId, request.getPreferences())
-                + buildRankedRecommendationContext(userId, conversation, request.getMessage(), request.getPreferences());
+                + recommendations.prompt();
         String aiText = openRouterService.generateResponse(
                 history,
                 catalog);
         AIMessage aiMessage = saveAssistantMessage(aiText, conversation);
 
-        return buildChatResponse(conversation.getId(), aiMessage);
+        AIChatResponse response = buildChatResponse(conversation.getId(), aiMessage);
+        response.setUserMessageId(userMessage.getId());
+        response.setRecommendations(recommendations.items());
+        return response;
+    }
+
+    @Override
+    @Transactional
+    public AIChatResponse editMessage(Long userId, Long conversationId, EditAIMessageRequest request) {
+        AIConversation conversation = aiConversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation not found"));
+        if (!conversation.getUser().getId().equals(userId)) {
+            throw new ForbiddenException("You do not have access to this conversation");
+        }
+
+        List<AIMessage> history = aiMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
+        int editedIndex = -1;
+        for (int i = 0; i < history.size(); i++) {
+            if (history.get(i).getId().equals(request.getMessageId())) {
+                editedIndex = i;
+                break;
+            }
+        }
+        if (editedIndex < 0 || history.get(editedIndex).getSender() != MessageSender.USER) {
+            throw new ResourceNotFoundException("Customer message not found in this conversation");
+        }
+
+        AIMessage editedMessage = history.get(editedIndex);
+        editedMessage.setMessage(request.getMessage().trim());
+        aiMessageRepository.save(editedMessage);
+        if (editedIndex + 1 < history.size()) {
+            aiMessageRepository.deleteAll(history.subList(editedIndex + 1, history.size()));
+        }
+
+        AIChatPreferences preferences = request.getPreferences();
+        List<AIMessage> updatedHistory = loadHistory(conversationId);
+        RecommendationContext recommendations = buildRankedRecommendationContext(
+                userId, conversation, request.getMessage(), preferences);
+        String catalog = productCatalogBuilder.build()
+                + buildPersonalizationContext(userId, preferences)
+                + recommendations.prompt();
+        String aiText = openRouterService.generateResponse(updatedHistory, catalog);
+        AIMessage aiMessage = saveAssistantMessage(aiText, conversation);
+
+        AIChatResponse response = buildChatResponse(conversationId, aiMessage);
+        response.setEditedMessageId(editedMessage.getId());
+        response.setUserMessageId(editedMessage.getId());
+        response.setRecommendations(recommendations.items());
+        return response;
     }
 
     @Override
@@ -96,13 +147,15 @@ public class AIServiceImpl implements AIService {
     public AIChatResponse streamChat(Long userId, AIChatRequest request, Consumer<String> onToken) {
 
         AIConversation conversation = resolveConversation(userId, request);
-        saveUserMessage(request, conversation);
+        AIMessage userMessage = saveUserMessage(request, conversation);
         List<AIMessage> history = loadHistory(conversation.getId());
 
         StringBuilder collected = new StringBuilder();
+        RecommendationContext recommendations = buildRankedRecommendationContext(
+                userId, conversation, request.getMessage(), request.getPreferences());
         String catalog = productCatalogBuilder.build()
                 + buildPersonalizationContext(userId, request.getPreferences())
-                + buildRankedRecommendationContext(userId, conversation, request.getMessage(), request.getPreferences());
+                + recommendations.prompt();
         openRouterService.streamGenerateResponse(history,
                 catalog, token -> {
             collected.append(token);
@@ -115,7 +168,10 @@ public class AIServiceImpl implements AIService {
 
         AIMessage aiMessage = saveAssistantMessage(collected.toString(), conversation);
 
-        return buildChatResponse(conversation.getId(), aiMessage);
+        AIChatResponse response = buildChatResponse(conversation.getId(), aiMessage);
+        response.setUserMessageId(userMessage.getId());
+        response.setRecommendations(recommendations.items());
+        return response;
     }
 
     private String buildPersonalizationContext(Long userId, AIChatPreferences preferences) {
@@ -144,9 +200,9 @@ public class AIServiceImpl implements AIService {
         return context.toString();
     }
 
-    private String buildRankedRecommendationContext(Long userId, AIConversation conversation,
+    private RecommendationContext buildRankedRecommendationContext(Long userId, AIConversation conversation,
             String message, AIChatPreferences preferences) {
-        if (!isRecommendationRequest(message)) return "";
+        if (!isRecommendationRequest(message)) return new RecommendationContext("", List.of());
 
         AIRecommendationRequest request = new AIRecommendationRequest();
         request.setConversationId(conversation.getId());
@@ -159,8 +215,8 @@ public class AIServiceImpl implements AIService {
                 .append("\nOnly recommend products from this ranked list for this request. Do not invent or substitute catalog items.")
                 .append("\nUse each item's supplied reason to explain the match.");
         if (ranked.isEmpty()) {
-            return context.append("\nNo new matching products are available. Explain that clearly and ask which constraint the customer would like to change; never repeat previously recommended products.")
-                    .toString();
+            return new RecommendationContext(context.append("\nNo new matching products are available. Explain that clearly and ask which constraint the customer would like to change; never repeat previously recommended products.")
+                    .toString(), ranked);
         }
         for (AIRecommendationResponse item : ranked) {
             context.append("\n- ").append(item.getProductName())
@@ -169,7 +225,7 @@ public class AIServiceImpl implements AIService {
                     .append(", rating: ").append(item.getAverageRate() != null ? item.getAverageRate() : "not rated")
                     .append("): ").append(item.getReason());
         }
-        return context.toString();
+        return new RecommendationContext(context.toString(), ranked);
     }
 
     private boolean isRecommendationRequest(String message) {
@@ -179,7 +235,8 @@ public class AIServiceImpl implements AIService {
                 "don't want to shop", "do not want to shop", "not shopping",
                 "don't want a recommendation", "do not want a recommendation", "not looking for a perfume",
                 "why did you recommend", "why recommend", "why this perfume")) return false;
-        return containsAny(text, "recommend", "recommendation", "suggest a perfume", "suggest me",
+        return containsAny(text, "recommend", "recommendation", "suggest", "looking for", "i need a perfume",
+                "i want a perfume", "show me a perfume", "find me", "help me find", "searching for",
                 "find my perfume", "find me a perfume", "perfume for", "fragrance for",
                 "what perfume", "which perfume", "help me choose a perfume", "what should i buy",
                 "what would you recommend", "what do you recommend", "what suits me", "another perfume");
@@ -306,9 +363,9 @@ public class AIServiceImpl implements AIService {
         return conversation;
     }
 
-    private void saveUserMessage(AIChatRequest request, AIConversation conversation) {
+    private AIMessage saveUserMessage(AIChatRequest request, AIConversation conversation) {
         AIMessage userMessage = aiMapper.toMessageEntity(request, conversation);
-        aiMessageRepository.save(userMessage);
+        return aiMessageRepository.save(userMessage);
     }
 
     private List<AIMessage> loadHistory(Long conversationId) {
@@ -343,6 +400,8 @@ public class AIServiceImpl implements AIService {
         response.setUpdatedAt(aiMessage.getUpdatedAt());
         return response;
     }
+
+    private record RecommendationContext(String prompt, List<AIRecommendationResponse> items) {}
 
     // =========================================================
     // GENERATE CONVERSATION TITLE

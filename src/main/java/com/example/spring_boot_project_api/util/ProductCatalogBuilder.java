@@ -20,8 +20,7 @@ public class ProductCatalogBuilder {
         this.productRepository = productRepository;
     }
 
-    // Builds a compact text snapshot of the shop catalog so the model only
-    // recommends products that actually exist (name, brand, price, stock).
+    // Builds a compact snapshot of products customers can currently buy.
     public String build() {
         List<Product> products = productRepository.findAll();
         if (products.isEmpty()) {
@@ -29,8 +28,8 @@ public class ProductCatalogBuilder {
         }
         StringBuilder sb = new StringBuilder(
                 "Blossom Fragrance product catalog. Recommend ONLY products "
-                + "from this list, using their exact names. Never invent names, "
-                + "prices, or products that are not listed here:");
+                + "from this list, using their exact names. Never invent names "
+                + "or prices:");
         int added = 0;
         for (Product product : products) {
             if (added >= MAX_CATALOG_SIZE) {
@@ -39,29 +38,35 @@ public class ProductCatalogBuilder {
             if (!Boolean.TRUE.equals(product.getIsActive())) {
                 continue;
             }
-            boolean inStock = false;
             BigDecimal price = null;
             if (product.getVariants() != null) {
                 for (ProductVariant variant : product.getVariants()) {
                     if (!Boolean.TRUE.equals(variant.getIsActive())) {
                         continue;
                     }
-                    if (variant.getStock() != null && variant.getStock() > 0) {
-                        inStock = true;
-                    }
-                    if (variant.getPrice() != null
+                    if (variant.getStock() != null && variant.getStock() > 0
+                            && variant.getPrice() != null
                             && (price == null || variant.getPrice().compareTo(price) < 0)) {
                         price = variant.getPrice();
                     }
                 }
             }
+            // Do not give the model unavailable products as recommendation
+            // candidates. The backend's ranked recommendation endpoint uses
+            // the same active, in-stock rule.
+            if (price == null) {
+                continue;
+            }
             sb.append("\n- ").append(product.getName())
                     .append(" (brand: ")
                     .append(product.getBrand() != null ? product.getBrand().getName() : "unknown")
-                    .append(", from ").append(price != null ? "$" + price : "price unavailable")
-                    .append(", in stock: ").append(inStock ? "yes" : "no")
+                    .append(", from $").append(price)
                     .append(")");
             added++;
+        }
+        if (added == 0) {
+            return "No active, in-stock perfumes with a listed price are currently available. "
+                    + "Do not recommend a product until the catalog has available items.";
         }
         return sb.toString();
     }

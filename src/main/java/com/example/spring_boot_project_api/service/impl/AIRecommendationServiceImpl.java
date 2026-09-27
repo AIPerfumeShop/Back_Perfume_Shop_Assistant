@@ -372,6 +372,11 @@ public class AIRecommendationServiceImpl implements AIRecommendationService {
                 request.getRecommendationId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Recommendation not found with ID : " + request.getRecommendationId()));
+        if (recommendation.getConversation() == null
+                || recommendation.getConversation().getUser() == null
+                || !userId.equals(recommendation.getConversation().getUser().getId())) {
+            throw new ForbiddenException("You cannot track a recommendation from another customer");
+        }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with ID : " + userId));
 

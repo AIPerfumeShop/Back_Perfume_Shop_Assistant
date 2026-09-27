@@ -17,6 +17,7 @@ import lombok.Setter;
 public class ProductFilterRequest {
     private static final int DEFAULT_PAGE = 0;
     private static final int DEFAULT_SIZE = 20;
+    private static final int MAX_SIZE = 1000;
     private static final String DEFAULT_SORT = "id";
     private static final String DEFAULT_DIRECTION = "asc";
     private static final Set<String> SORTABLE_FIELDS = 
@@ -25,7 +26,8 @@ public class ProductFilterRequest {
         "name",
         "createdAt",
         "updatedAt",
-        "price"
+        "price",
+        "averageRate"
     );
     private String search;
     private Long categoryId;
@@ -54,15 +56,19 @@ public class ProductFilterRequest {
         String s = sort == null || sort.trim().isEmpty() ? DEFAULT_SORT : sort.trim();
         return "price".equalsIgnoreCase(s);
     }
+    public boolean isAverageRateSort(){
+        String s = sort == null || sort.trim().isEmpty() ? DEFAULT_SORT : sort.trim();
+        return "averageRate".equalsIgnoreCase(s);
+    }
     public PageRequest toPageRequest(){
         int pageNum = page == null || page < 0 ? DEFAULT_PAGE : page;
-        int pageSize = size == null || size <= 0 ? DEFAULT_SIZE : size;
+        int pageSize = size == null || size <= 0 ? DEFAULT_SIZE : Math.min(size, MAX_SIZE);
 
         String sortField = sort == null || sort.trim().isEmpty() ? DEFAULT_SORT : sort.trim();
         if(!SORTABLE_FIELDS.contains(sortField)){
             sortField = DEFAULT_SORT;
         }
-        if("price".equalsIgnoreCase(sortField)){
+        if("price".equalsIgnoreCase(sortField) || "averageRate".equalsIgnoreCase(sortField)){
             return PageRequest.of(pageNum, pageSize);
         }
         Sort.Direction dir = Sort.Direction.ASC;

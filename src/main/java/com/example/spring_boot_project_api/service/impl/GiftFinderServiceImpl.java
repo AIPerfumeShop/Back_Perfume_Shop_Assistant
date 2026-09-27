@@ -77,12 +77,13 @@ public class GiftFinderServiceImpl implements GiftFinderService {
     public GiftFinderResponse recommend(GiftFinderRequest request) {
         validate(request);
 
-        List<ScoredGift> exact = scoreCandidates(request, findCandidates(request.getBudgetMin(), request.getBudgetMax()));
+        List<ScoredGift> exact = scoreCandidates(
+                request, findCandidates(request.getBudgetMin(), request.getBudgetMax()), true);
         if (!exact.isEmpty()) {
             return buildResponse(request, exact, true, null);
         }
 
-        List<ScoredGift> relaxed = scoreCandidates(request, findCandidates(null, null));
+        List<ScoredGift> relaxed = scoreCandidates(request, findCandidates(null, null), false);
         if (relaxed.isEmpty()) {
             GiftFinderResponse empty = new GiftFinderResponse();
             empty.setExactMatchFound(false);
@@ -112,7 +113,8 @@ public class GiftFinderServiceImpl implements GiftFinderService {
         return page.getContent();
     }
 
-    private List<ScoredGift> scoreCandidates(GiftFinderRequest request, List<Product> products) {
+    private List<ScoredGift> scoreCandidates(
+            GiftFinderRequest request, List<Product> products, boolean enforceBudget) {
         if (products.isEmpty()) {
             return List.of();
         }
@@ -161,6 +163,16 @@ public class GiftFinderServiceImpl implements GiftFinderService {
                     .filter(Objects::nonNull)
                     .min(Comparator.naturalOrder())
                     .orElse(BigDecimal.ZERO);
+            // The database candidate filter joins products to all variants.
+            // Recheck the actual active, in-stock price so an inactive or
+            // sold-out cheap variant cannot produce a false exact-budget match.
+            if (enforceBudget
+                    && ((request.getBudgetMin() != null
+                            && price.compareTo(request.getBudgetMin()) < 0)
+                        || (request.getBudgetMax() != null
+                            && price.compareTo(request.getBudgetMax()) > 0))) {
+                continue;
+            }
             FragranceProfile profile = profileByProduct.get(product.getId());
             GiftScores scores = score(request, profile, price,
                     avgRateById.getOrDefault(product.getId(), 0.0),
